@@ -4,7 +4,7 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
 
-## [Unreleased]
+## [1.0.0-beta.1] - 2026-04-22
 
 ### Changed
 
@@ -14,16 +14,8 @@
 
 ### Added
 
+- 오픈 베타 릴리즈
 - `sirsoft-pay_nicepayments.payment.before_cancel` / `after_cancel` 액션 훅 — 외부 소비자가 결제 취소 지점에 본인인증 등 확장 로직을 붙일 수 있도록 확장점 제공
 - 가상계좌 입금통보 IP 화이트리스트 검증 강화 — 공식 발송 IP 외 요청은 라우트 진입 단계에서 차단
 - PG 도메인 전용 예외 도입 — 외부 소비자가 나이스페이먼츠 도메인 오류만 선택적으로 처리할 수 있도록 개선
-
-### Fixed
-
-- 다크 모드에서 결제 설정 폼 입력 필드의 포커스 링이 보이지 않던 문제 수정
-
-## [1.0.0-beta.1] - 2026-04-22
-
-### Added
-
-- 오픈 베타 릴리즈
+- 다크 모드 지원 보강 — 결제 설정 폼 입력 필드의 포커스 링이 다크 모드에서도 정상 표시
