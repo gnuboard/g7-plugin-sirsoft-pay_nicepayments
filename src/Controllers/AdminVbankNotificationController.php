@@ -33,6 +33,15 @@ class AdminVbankNotificationController
     ) {
     }
 
+    /**
+     * 가상계좌 입금통보 이력 조회
+     *
+     * 주문의 payment_meta 에 누적 저장된 NicePay 입금통보 이벤트 (계좌발급/입금완료/취소/재통보)
+     * 를 timeline 형태로 반환한다. 어드민 패널에서 통보 시점/금액/예금주를 추적 가능.
+     *
+     * @param  string  $orderNumber  주문번호
+     * @return JsonResponse notifications + summary, 또는 404 (주문 없음) / 빈 배열 (가상계좌 아님)
+     */
     public function show(string $orderNumber): JsonResponse
     {
         $order = $this->orderService->findByOrderNumber($orderNumber);

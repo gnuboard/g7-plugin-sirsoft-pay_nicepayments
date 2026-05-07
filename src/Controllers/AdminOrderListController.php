@@ -18,7 +18,12 @@ class AdminOrderListController extends AdminBaseController
 
     /**
      * 나이스페이먼츠 테스트 모드 주문 맵 반환
-     * { "order_number": true, ... }
+     *
+     * 최근 6개월 이내 nicepayments 결제 주문 중 payment_meta.is_test_mode = true 인
+     * 주문번호를 { "order_number": true, ... } 맵으로 반환한다. 어드민 주문 목록에
+     * 테스트 결제 배지 표시용으로 사용된다.
+     *
+     * @return JsonResponse 테스트 모드 주문 맵
      */
     public function testModeMap(): JsonResponse
     {

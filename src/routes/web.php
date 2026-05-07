@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Plugins\Sirsoft\PayNicepayments\Controllers\PaymentCallbackController;
+use Plugins\Sirsoft\PayNicepayments\Http\Middleware\VbankNotifyIpWhitelist;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,7 +23,9 @@ Route::withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfTok
             ->name('payment.callback');
 
         // 가상계좌 입금 통보 (나이스페이먼츠 서버 → 우리 서버 POST)
+        // IP 화이트리스트 미들웨어로 NicePay 공식 발송 IP 만 허용
         Route::post('/payment/vbank-notify', [PaymentCallbackController::class, 'vbankNotify'])
+            ->middleware(VbankNotifyIpWhitelist::class)
             ->name('payment.vbank-notify');
     });
 

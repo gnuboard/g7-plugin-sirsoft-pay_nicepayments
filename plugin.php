@@ -205,6 +205,22 @@ class Plugin extends AbstractPlugin
                     'en' => 'After NicePayments server authorization completed',
                 ],
             ],
+            [
+                'name' => 'sirsoft-pay_nicepayments.payment.before_cancel',
+                'type' => 'action',
+                'description' => [
+                    'ko' => '나이스페이먼츠 결제 취소 API 호출 전 (본인인증 등 확장 지점)',
+                    'en' => 'Before NicePayments cancel API call (extension point for re-auth, etc.)',
+                ],
+            ],
+            [
+                'name' => 'sirsoft-pay_nicepayments.payment.after_cancel',
+                'type' => 'action',
+                'description' => [
+                    'ko' => '나이스페이먼츠 결제 취소 완료 후',
+                    'en' => 'After NicePayments cancel completed',
+                ],
+            ],
         ];
     }
 }

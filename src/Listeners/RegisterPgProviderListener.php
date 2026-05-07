@@ -10,6 +10,11 @@ class RegisterPgProviderListener implements HookListenerInterface
 {
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
 
+    /**
+     * 구독할 훅 매핑 반환
+     *
+     * @return array<string, array<string, mixed>> 훅 구독 설정
+     */
     public static function getSubscribedHooks(): array
     {
         return [
@@ -26,13 +31,25 @@ class RegisterPgProviderListener implements HookListenerInterface
         ];
     }
 
+    /**
+     * 기본 핸들러 (미사용 — 개별 메서드에서 처리)
+     *
+     * @param  mixed  ...$args  훅 인수
+     */
     public function handle(...$args): void {}
 
+    /**
+     * PG 제공자 목록에 나이스페이먼츠 등록
+     *
+     * @param  array  $providers  기존 PG 제공자 목록
+     * @return array 나이스페이먼츠가 추가된 PG 제공자 목록
+     */
     public function registerProvider(array $providers): array
     {
         $providers[] = [
             'id' => 'nicepayments',
-            'name' => ['ko' => '나이스페이먼츠', 'en' => 'NicePayments'],
+            'name_key' => 'sirsoft-pay_nicepayments::provider.name',
+            'name' => localized_label(nameKey: 'sirsoft-pay_nicepayments::provider.name'),
             'icon' => 'credit-card',
             'supported_methods' => ['card', 'bank_transfer', 'virtual_account', 'mobile'],
         ];
@@ -40,6 +57,16 @@ class RegisterPgProviderListener implements HookListenerInterface
         return $providers;
     }
 
+    /**
+     * PG 클라이언트 설정 제공 (프론트엔드 SDK용)
+     *
+     * MID, SDK URL, 콜백 URL, 활성화된 간편결제 목록 등을 반환. "타 PG 와 사용가능함"
+     * 설정이 꺼져 있고 기본 PG 가 nicepayments 가 아니면 간편결제는 빈 배열.
+     *
+     * @param  array  $config  기존 설정
+     * @param  string  $provider  PG 제공자 ID
+     * @return array 클라이언트 설정 또는 입력 그대로 (다른 PG 인 경우)
+     */
     public function getClientConfig(array $config, string $provider): array
     {
         if ($provider !== 'nicepayments') {

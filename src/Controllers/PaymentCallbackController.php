@@ -45,6 +45,16 @@ class PaymentCallbackController
      * POST /plugins/sirsoft-pay_nicepayments/payment/callback
      * (CSRF 제외 - 나이스페이먼츠가 브라우저 통해 POST 전달)
      */
+    /**
+     * 나이스페이먼츠 결제 승인 콜백
+     *
+     * 1단계: 브라우저가 POST 콜백으로 인증 토큰 전달 → 서명 검증 + 서버 승인 호출.
+     * 2단계: NextAppURL 호출해 최종 승인. 결제 수단별로 가상계좌(계좌발급)/카드(즉시완료) 분기.
+     * 사용자 취소(AuthResultCode != '0000') 는 에러 query 없이 체크아웃으로 복귀.
+     *
+     * @param  AuthCallbackRequest  $request  검증된 콜백 페이로드
+     * @return \Illuminate\Http\RedirectResponse 성공/실패 URL 로 리다이렉트
+     */
     public function authCallback(AuthCallbackRequest $request): \Illuminate\Http\RedirectResponse
     {
         $validated = $request->validated();
@@ -254,6 +264,16 @@ class PaymentCallbackController
      *
      * POST /plugins/sirsoft-pay_nicepayments/payment/sign-data
      */
+    /**
+     * 결제 요청 SignData 생성
+     *
+     * 클라이언트가 결제창 호출 직전에 EdiDate + SignData 를 발급받기 위해 호출.
+     * MOID 와 Amt 를 우리 DB 의 주문 금액과 비교 검증하여 클라이언트 측 금액 조작을
+     * 차단한다 (인증 필수 + auth:sanctum,web 미들웨어).
+     *
+     * @param  Request  $request  amt + moid
+     * @return JsonResponse ediDate / signData / mid 또는 400/422
+     */
     public function signData(Request $request): JsonResponse
     {
         $amt = (int) $request->input('amt', 0);
@@ -313,6 +333,16 @@ class PaymentCallbackController
      *   - TID/MOID/Amt 가 우리 DB 의 임시 발급 정보와 일치하는지 비교
      *   - 동일 TID 중복 처리 방지 (행 잠금)
      *   세 단계로 위변조/재처리 방어.
+     */
+    /**
+     * 가상계좌 입금 통보 처리
+     *
+     * NicePay 서버가 직접 호출하는 입금 확인 웹훅. ResultCode 4110(입금완료) 만
+     * 결제완료 처리하고 그 외 코드는 payment_meta 에 timeline 으로 누적.
+     * 어떤 결과든 200 + 정확히 "OK" 응답으로 NicePay 재시도 차단.
+     *
+     * @param  VbankNotifyRequest  $request  검증된 입금통보 페이로드 (EUC-KR → UTF-8 변환됨)
+     * @return Response 항상 200 + "OK" (text/plain)
      */
     public function vbankNotify(VbankNotifyRequest $request): Response
     {

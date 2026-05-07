@@ -15,6 +15,11 @@ class PaymentRefundListener implements HookListenerInterface
 {
     private const PG_PROVIDER_ID = 'nicepayments';
 
+    /**
+     * 구독할 훅 매핑 반환
+     *
+     * @return array<string, array<string, mixed>> 훅 구독 설정
+     */
     public static function getSubscribedHooks(): array
     {
         return [
@@ -26,8 +31,27 @@ class PaymentRefundListener implements HookListenerInterface
         ];
     }
 
+    /**
+     * 기본 핸들러 (미사용 — 개별 메서드에서 처리)
+     *
+     * @param  mixed  ...$args  훅 인수
+     */
     public function handle(...$args): void {}
 
+    /**
+     * 환불 처리 훅 핸들러 (sirsoft-ecommerce.payment.refund 필터)
+     *
+     * NicePay 결제 건 (pg_provider=nicepayments) 만 처리. 가상계좌 입금 완료 건은
+     * 환불계좌 정보가 필요해 별도 어드민 API 로 우회. before_cancel/after_cancel
+     * 액션 훅을 발행하여 외부 확장 지점 제공.
+     *
+     * @param  array  $result  이전 필터 누적 결과
+     * @param  Order  $order  대상 주문
+     * @param  OrderPayment  $payment  대상 결제 정보
+     * @param  float  $refundAmount  환불 금액
+     * @param  string|null  $reason  환불 사유 (없으면 기본 메시지)
+     * @return array success / error_code / error_message / transaction_id
+     */
     public function processRefund(
         array $result,
         Order $order,

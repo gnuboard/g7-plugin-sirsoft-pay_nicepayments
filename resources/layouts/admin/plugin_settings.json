@@ -302,7 +302,7 @@
                                                         "type": "basic",
                                                         "name": "Div",
                                                         "props": {
-                                                            "className": "flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent"
+                                                            "className": "flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent"
                                                         },
                                                         "children": [
                                                             {
@@ -384,7 +384,7 @@
                                                             "type": "password",
                                                             "name": "live_merchant_key",
                                                             "placeholder": "live_key_...",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent font-mono text-sm"
                                                         }
                                                     }
                                                 ]
@@ -474,7 +474,7 @@
                                                             "type": "text",
                                                             "name": "redirect_success_url",
                                                             "placeholder": "/shop/orders/{orderId}/complete",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-sm"
                                                         }
                                                     }
                                                 ]
@@ -528,7 +528,7 @@
                                                             "type": "text",
                                                             "name": "redirect_fail_url",
                                                             "placeholder": "/shop/checkout",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent text-sm"
                                                         }
                                                     }
                                                 ]
@@ -557,12 +557,17 @@
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center gap-2" },
+                                        "props": {
+                                            "className": "flex items-center gap-2"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
                                                 "name": "Icon",
-                                                "props": { "name": "bell", "className": "w-4 h-4 text-blue-600 dark:text-blue-400" }
+                                                "props": {
+                                                    "name": "bell",
+                                                    "className": "w-4 h-4 text-blue-600 dark:text-blue-400"
+                                                }
                                             },
                                             {
                                                 "type": "basic",
@@ -579,18 +584,24 @@
                             {
                                 "type": "basic",
                                 "name": "Div",
-                                "props": { "className": "p-6" },
+                                "props": {
+                                    "className": "p-6"
+                                },
                                 "children": [
                                     {
                                         "type": "basic",
                                         "name": "P",
-                                        "props": { "className": "text-sm text-gray-600 dark:text-gray-400 mb-3" },
+                                        "props": {
+                                            "className": "text-sm text-gray-600 dark:text-gray-400 mb-3"
+                                        },
                                         "text": "$t:sirsoft-pay_nicepayments.settings.vbank_notify_hint"
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center gap-2" },
+                                        "props": {
+                                            "className": "flex items-center gap-2"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
@@ -633,7 +644,10 @@
                                                     {
                                                         "type": "basic",
                                                         "name": "Icon",
-                                                        "props": { "name": "copy", "className": "w-4 h-4" }
+                                                        "props": {
+                                                            "name": "copy",
+                                                            "className": "w-4 h-4"
+                                                        }
                                                     },
                                                     {
                                                         "type": "basic",
@@ -749,7 +763,9 @@
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4 bg-blue-50 dark:bg-blue-900/20" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4 bg-blue-50 dark:bg-blue-900/20"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
@@ -758,13 +774,17 @@
                                                     {
                                                         "type": "basic",
                                                         "name": "Label",
-                                                        "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                        "props": {
+                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                        },
                                                         "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_allow_with_other_pg"
                                                     },
                                                     {
                                                         "type": "basic",
                                                         "name": "P",
-                                                        "props": { "className": "mt-0.5 text-xs text-gray-500 dark:text-gray-400" },
+                                                        "props": {
+                                                            "className": "mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                                                        },
                                                         "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_allow_with_other_pg_hint"
                                                     }
                                                 ]
@@ -772,14 +792,18 @@
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_allow_with_other_pg" }
+                                                "props": {
+                                                    "name": "easy_pay_allow_with_other_pg"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
@@ -788,13 +812,17 @@
                                                     {
                                                         "type": "basic",
                                                         "name": "Label",
-                                                        "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                        "props": {
+                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                        },
                                                         "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_naverpay"
                                                     },
                                                     {
                                                         "type": "basic",
                                                         "name": "P",
-                                                        "props": { "className": "mt-0.5 text-xs text-green-600 dark:text-green-400" },
+                                                        "props": {
+                                                            "className": "mt-0.5 text-xs text-green-600 dark:text-green-400"
+                                                        },
                                                         "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_naverpay_hint"
                                                     }
                                                 ]
@@ -802,50 +830,66 @@
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_naverpay" }
+                                                "props": {
+                                                    "name": "easy_pay_naverpay"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
                                                 "name": "Label",
-                                                "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                "props": {
+                                                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                },
                                                 "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_kakaopay"
                                             },
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_kakaopay" }
+                                                "props": {
+                                                    "name": "easy_pay_kakaopay"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
                                                 "name": "Label",
-                                                "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                "props": {
+                                                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                },
                                                 "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_samsungpay"
                                             },
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_samsungpay" }
+                                                "props": {
+                                                    "name": "easy_pay_samsungpay"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
@@ -854,13 +898,17 @@
                                                     {
                                                         "type": "basic",
                                                         "name": "Label",
-                                                        "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                        "props": {
+                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                        },
                                                         "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_applepay"
                                                     },
                                                     {
                                                         "type": "basic",
                                                         "name": "P",
-                                                        "props": { "className": "mt-0.5 text-xs text-gray-500 dark:text-gray-400" },
+                                                        "props": {
+                                                            "className": "mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                                                        },
                                                         "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_applepay_hint"
                                                     }
                                                 ]
@@ -868,79 +916,105 @@
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_applepay" }
+                                                "props": {
+                                                    "name": "easy_pay_applepay"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
                                                 "name": "Label",
-                                                "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                "props": {
+                                                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                },
                                                 "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_payco"
                                             },
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_payco" }
+                                                "props": {
+                                                    "name": "easy_pay_payco"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
                                                 "name": "Label",
-                                                "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                "props": {
+                                                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                },
                                                 "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_skpay"
                                             },
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_skpay" }
+                                                "props": {
+                                                    "name": "easy_pay_skpay"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
                                                 "name": "Label",
-                                                "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                "props": {
+                                                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                },
                                                 "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_ssgpay"
                                             },
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_ssgpay" }
+                                                "props": {
+                                                    "name": "easy_pay_ssgpay"
+                                                }
                                             }
                                         ]
                                     },
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center justify-between px-6 py-4" },
+                                        "props": {
+                                            "className": "flex items-center justify-between px-6 py-4"
+                                        },
                                         "children": [
                                             {
                                                 "type": "basic",
                                                 "name": "Label",
-                                                "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+                                                "props": {
+                                                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                },
                                                 "text": "$t:sirsoft-pay_nicepayments.settings.easy_pay_lpay"
                                             },
                                             {
                                                 "type": "composite",
                                                 "name": "Toggle",
-                                                "props": { "name": "easy_pay_lpay" }
+                                                "props": {
+                                                    "name": "easy_pay_lpay"
+                                                }
                                             }
                                         ]
                                     }
@@ -1082,65 +1156,5 @@
                 ]
             }
         ]
-    },
-    "schema": {
-        "is_test_mode": {
-            "type": "boolean",
-            "default": true,
-            "label": "$t:sirsoft-pay_nicepayments.settings.test_mode",
-            "hint": "$t:sirsoft-pay_nicepayments.settings.test_mode_hint"
-        },
-        "test_mid": {
-            "type": "string",
-            "default": "nicepay00m",
-            "label": "$t:sirsoft-pay_nicepayments.settings.test_mid",
-            "hint": "$t:sirsoft-pay_nicepayments.settings.test_mid_hint"
-        },
-        "test_merchant_key": {
-            "type": "string",
-            "default": "",
-            "sensitive": true,
-            "label": "$t:sirsoft-pay_nicepayments.settings.test_merchant_key",
-            "hint": "$t:sirsoft-pay_nicepayments.settings.test_merchant_key_hint"
-        },
-        "live_mid": {
-            "type": "string",
-            "default": "",
-            "label": "$t:sirsoft-pay_nicepayments.settings.live_mid"
-        },
-        "live_merchant_key": {
-            "type": "string",
-            "default": "",
-            "sensitive": true,
-            "label": "$t:sirsoft-pay_nicepayments.settings.live_merchant_key",
-            "hint": "$t:sirsoft-pay_nicepayments.settings.live_merchant_key_hint"
-        },
-        "redirect_success_url": {
-            "type": "string",
-            "default": "/shop/orders/{orderId}/complete",
-            "label": "$t:sirsoft-pay_nicepayments.settings.redirect_success_url",
-            "hint": "$t:sirsoft-pay_nicepayments.settings.redirect_success_url_hint"
-        },
-        "redirect_fail_url": {
-            "type": "string",
-            "default": "/shop/checkout",
-            "label": "$t:sirsoft-pay_nicepayments.settings.redirect_fail_url",
-            "hint": "$t:sirsoft-pay_nicepayments.settings.redirect_fail_url_hint"
-        },
-        "use_escrow": {
-            "type": "boolean",
-            "default": false,
-            "label": "$t:sirsoft-pay_nicepayments.settings.use_escrow",
-            "hint": "$t:sirsoft-pay_nicepayments.settings.use_escrow_hint"
-        },
-        "easy_pay_allow_with_other_pg": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_allow_with_other_pg" },
-        "easy_pay_naverpay": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_naverpay" },
-        "easy_pay_kakaopay": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_kakaopay" },
-        "easy_pay_samsungpay": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_samsungpay" },
-        "easy_pay_applepay": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_applepay" },
-        "easy_pay_payco": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_payco" },
-        "easy_pay_skpay": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_skpay" },
-        "easy_pay_ssgpay": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_ssgpay" },
-        "easy_pay_lpay": { "type": "boolean", "default": false, "label": "$t:sirsoft-pay_nicepayments.settings.easy_pay_lpay" }
     }
 }

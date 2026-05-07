@@ -29,6 +29,15 @@ class AdminVbankRefundController extends AdminBaseController
     /**
      * POST /api/plugins/sirsoft-pay_nicepayments/admin/vbank-refund
      */
+    /**
+     * 가상계좌 입금 완료 건 환불 처리
+     *
+     * 일반 환불 훅으로 처리할 수 없는 vbank 입금 완료 건의 환불을 직접 수행.
+     * NicePay 가 요구하는 환불 계좌 정보(계좌번호·은행코드·예금주)를 직접 수집.
+     *
+     * @param  Request  $request  TID/MOID/CancelAmt + 환불계좌 정보
+     * @return JsonResponse 환불 결과 또는 422 (입력 누락)
+     */
     public function refund(Request $request): JsonResponse
     {
         $tid = trim((string) $request->input('tid', ''));

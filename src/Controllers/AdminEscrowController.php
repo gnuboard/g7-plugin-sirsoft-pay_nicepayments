@@ -25,6 +25,15 @@ class AdminEscrowController extends AdminBaseController
      *
      * GET /api/plugins/sirsoft-pay_nicepayments/admin/orders/{orderNumber}/escrow-payments
      */
+    /**
+     * 주문의 에스크로 결제 목록 조회
+     *
+     * 에스크로(EscrowYN=Y) 로 결제된 가상계좌/카드 결제 건들의 TID/금액/상태를 반환.
+     * 어드민 에스크로 배송 등록 화면에서 결제 선택 UI 데이터 소스로 사용.
+     *
+     * @param  string  $orderNumber  주문번호
+     * @return JsonResponse 에스크로 결제 목록
+     */
     public function getEscrowPayments(string $orderNumber): JsonResponse
     {
         $payments = DB::table('ecommerce_order_payments')
@@ -48,6 +57,15 @@ class AdminEscrowController extends AdminBaseController
      * 에스크로 배송 등록
      *
      * POST /api/plugins/sirsoft-pay_nicepayments/admin/escrow/register-delivery
+     */
+    /**
+     * 에스크로 배송 등록
+     *
+     * NicePay escrow_process.jsp 호출하여 배송 정보(택배사/송장번호/수령인 등)를
+     * NicePay 측에 등록. 등록 완료 시 구매자에게 자동으로 구매확정 안내가 발송됨.
+     *
+     * @param  Request  $request  배송 정보 폼
+     * @return JsonResponse 등록 결과 + ResultCode
      */
     public function registerDelivery(Request $request): JsonResponse
     {

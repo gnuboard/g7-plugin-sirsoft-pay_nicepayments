@@ -31,13 +31,6 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class VbankNotifyRequest extends FormRequest
 {
-    /** 나이스페이먼츠 공식 입금통보 발송 IP — 매뉴얼 INBOUND 섹션 */
-    private const ALLOWED_IPS = [
-        '121.133.126.10',
-        '121.133.126.11',
-        '211.33.136.39',
-    ];
-
     /** 한글 인코딩 변환 대상 필드 (EUC-KR → UTF-8) */
     private const TEXT_FIELDS_FOR_DECODE = [
         'GoodsName',
@@ -50,13 +43,14 @@ class VbankNotifyRequest extends FormRequest
         'MallReserved',
     ];
 
+    /**
+     * FormRequest 인가 — 권한 검증은 vbank-notify.ip-whitelist 미들웨어에서 처리
+     *
+     * @return bool 항상 true
+     */
     public function authorize(): bool
     {
-        if (app()->environment('testing', 'local')) {
-            return true;
-        }
-
-        return in_array($this->ip(), self::ALLOWED_IPS, true);
+        return true;
     }
 
     /**
@@ -96,6 +90,14 @@ class VbankNotifyRequest extends FormRequest
         $this->replace($data);
     }
 
+    /**
+     * 입금통보 페이로드 검증 규칙
+     *
+     * NicePay 매뉴얼 필드명을 그대로 사용. 한글(BuyerName 등) 은 EUC-KR 로
+     * 들어와 prepareForValidation 에서 UTF-8 로 변환된 후 검증.
+     *
+     * @return array<string, mixed> Laravel 검증 규칙
+     */
     public function rules(): array
     {
         return [

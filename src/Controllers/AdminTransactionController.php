@@ -18,6 +18,15 @@ class AdminTransactionController extends AdminBaseController
         parent::__construct();
     }
 
+    /**
+     * TID 단건 거래 조회
+     *
+     * NicePay 단건 거래 조회 API 를 호출하고 로컬 DB 의 보조 정보(에스크로 여부,
+     * 테스트 모드 플래그)를 합쳐 반환한다.
+     *
+     * @param  Request  $request  tid 입력 폼
+     * @return JsonResponse 거래 정보 + _local_is_escrow / EscrowYN / _is_test_mode 보강
+     */
     public function query(Request $request): JsonResponse
     {
         $tid = trim((string) $request->input('tid', ''));
@@ -29,6 +38,15 @@ class AdminTransactionController extends AdminBaseController
         return $this->queryByTid($tid);
     }
 
+    /**
+     * 주문번호로 거래 조회 (TID 자동 매핑)
+     *
+     * 어드민 주문 상세에서 거래 조회 버튼 클릭 시 사용. ecommerce_order_payments
+     * 의 transaction_id 를 찾아 queryByTid 로 위임.
+     *
+     * @param  string  $orderNumber  주문번호
+     * @return JsonResponse 거래 정보 또는 매핑 없을 시 null
+     */
     public function queryByOrder(string $orderNumber): JsonResponse
     {
         $payment = DB::table('ecommerce_order_payments')

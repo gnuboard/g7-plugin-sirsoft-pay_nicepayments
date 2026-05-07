@@ -29,9 +29,15 @@ use Illuminate\Http\Request;
 final class UrlHelper
 {
     /**
-     * 상대 경로를 절대 URL 로 변환.
+     * 상대 경로를 절대 URL 로 변환
      *
-     * 입력이 이미 `http://` / `https://` 로 시작하면 그대로 반환.
+     * 입력이 이미 `http://` / `https://` 로 시작하면 그대로 반환. reverse proxy
+     * 환경(X-Forwarded-Host) / 직접 연결(HTTP_HOST) / Symfony Request / SERVER_NAME
+     * 우선순위로 origin 결정.
+     *
+     * @param  string  $urlOrPath  상대 경로 또는 절대 URL
+     * @param  Request|null  $request  현재 요청 (없으면 글로벌 request 사용)
+     * @return string 절대 URL
      */
     public static function toAbsolute(string $urlOrPath, ?Request $request = null): string
     {

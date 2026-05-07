@@ -20,11 +20,24 @@ class AuthCallbackRequest extends FormRequest
 {
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
 
+    /**
+     * 콜백 요청 인가 — 외부 PG 호출이라 항상 true
+     *
+     * @return bool 항상 true
+     */
     public function authorize(): bool
     {
         return true;
     }
 
+    /**
+     * NicePay 콜백 페이로드 검증 규칙
+     *
+     * AuthResultCode 가 '0000' 이 아닐 때 (사용자 취소/실패) 는 NextAppURL 등
+     * 후속 필드가 없을 수 있어 strict 검증을 풀어 컨트롤러가 직접 분기 처리.
+     *
+     * @return array<string, mixed> Laravel 검증 규칙
+     */
     public function rules(): array
     {
         // 사용자 취소 / 인증 실패 시 NicePay 는 NextAppURL / TxTid / AuthToken /
