@@ -1,0 +1,78 @@
+<?php
+
+namespace Plugins\Sirsoft\PayNicepayments\Controllers;
+
+use App\Helpers\ResponseHelper;
+use App\Http\Controllers\Api\Base\AdminBaseController;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
+
+class AdminTransactionController extends AdminBaseController
+{
+    public function __construct(
+        private NicePaymentsApiService $apiService
+    ) {
+        parent::__construct();
+    }
+
+    public function query(Request $request): JsonResponse
+    {
+        $tid = trim((string) $request->input('tid', ''));
+
+        if ($tid === '') {
+            return ResponseHelper::error('messages.failed', 422, ['tid' => [__('sirsoft-pay_nicepayments::messages.errors.tid_required')]]);
+        }
+
+        return $this->queryByTid($tid);
+    }
+
+    public function queryByOrder(string $orderNumber): JsonResponse
+    {
+        $payment = DB::table('ecommerce_order_payments')
+            ->join('ecommerce_orders', 'ecommerce_orders.id', '=', 'ecommerce_order_payments.order_id')
+            ->where('ecommerce_orders.order_number', $orderNumber)
+            ->whereNotNull('ecommerce_order_payments.transaction_id')
+            ->where('ecommerce_order_payments.transaction_id', '!=', '')
+            ->whereIn('ecommerce_order_payments.pg_provider', ['nicepayments', 'nicepay'])
+            ->select(['ecommerce_order_payments.transaction_id'])
+            ->first();
+
+        if (!$payment) {
+            return ResponseHelper::success('messages.success', null);
+        }
+
+        return $this->queryByTid($payment->transaction_id);
+    }
+
+    private function queryByTid(string $tid): JsonResponse
+    {
+        try {
+            $result = $this->apiService->queryTransaction($tid);
+
+            $localPayment = DB::table('ecommerce_order_payments')
+                ->where('transaction_id', $tid)
+                ->select(['is_escrow', 'payment_meta'])
+                ->first();
+
+            $result['_local_is_escrow'] = (bool) ($localPayment?->is_escrow ?? false);
+
+            if ($localPayment?->payment_meta) {
+                $meta = json_decode($localPayment->payment_meta, true);
+                $result['EscrowYN'] = $meta['pg_raw_response']['EscrowYN']
+                    ?? ($result['EscrowYN'] ?? 'N');
+                $result['_is_test_mode'] = (bool) ($meta['is_test_mode'] ?? false);
+            }
+
+            return ResponseHelper::success('messages.success', $result);
+        } catch (\Exception $e) {
+            Log::error('NicePayments queryTransaction failed', [
+                'tid' => $tid,
+                'error' => $e->getMessage(),
+            ]);
+            return ResponseHelper::error('messages.failed', 502, null);
+        }
+    }
+}
