@@ -1,6 +1,7 @@
 import { handlerMap } from './handlers';
 import { initEasyPayWatcher } from './handlers/setPaymentMethod';
 import { installOrderResponseInterceptor } from './orderResponseInterceptor';
+import { installCheckoutEasyPayInjector } from './checkoutEasyPayInjector';
 
 const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
 
@@ -45,6 +46,7 @@ function registerHandlers(): number {
 function initPlugin(): void {
     // fetch 인터셉터는 G7Core 초기화와 무관하게 즉시 설치
     installOrderResponseInterceptor();
+    installCheckoutEasyPayInjector();
 
     const doInit = () => {
         const count = registerHandlers();
