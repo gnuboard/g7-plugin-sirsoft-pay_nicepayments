@@ -8,6 +8,78 @@
                 {
                     "type": "basic",
                     "name": "Div",
+                    "if": "{{order.data.payment?.pg_provider === 'nicepayments' && (order.data.total_vat_amount > 0 || order.data.total_tax_free_amount > 0)}}",
+                    "props": { "className": "pt-4 mt-2 border-t border-gray-200 dark:border-gray-700 space-y-1.5" },
+                    "children": [
+                        {
+                            "type": "basic",
+                            "name": "P",
+                            "props": { "className": "text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1" },
+                            "text": "$t:sirsoft-pay_nicepayments.user.tax_breakdown_title"
+                        },
+                        {
+                            "type": "basic",
+                            "name": "Div",
+                            "props": { "className": "flex items-center justify-between text-sm" },
+                            "children": [
+                                {
+                                    "type": "basic",
+                                    "name": "Span",
+                                    "props": { "className": "text-gray-500 dark:text-gray-400" },
+                                    "text": "$t:sirsoft-pay_nicepayments.user.supply_amount"
+                                },
+                                {
+                                    "type": "basic",
+                                    "name": "Span",
+                                    "props": { "className": "font-medium text-gray-900 dark:text-white" },
+                                    "text": "{{(Number(order.data.total_tax_amount) - Number(order.data.total_vat_amount)).toLocaleString('ko-KR')}}원"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "basic",
+                            "name": "Div",
+                            "props": { "className": "flex items-center justify-between text-sm" },
+                            "children": [
+                                {
+                                    "type": "basic",
+                                    "name": "Span",
+                                    "props": { "className": "text-gray-500 dark:text-gray-400" },
+                                    "text": "$t:sirsoft-pay_nicepayments.user.vat_amount"
+                                },
+                                {
+                                    "type": "basic",
+                                    "name": "Span",
+                                    "props": { "className": "font-medium text-gray-900 dark:text-white" },
+                                    "text": "{{order.data.total_vat_amount_formatted}}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "basic",
+                            "name": "Div",
+                            "if": "{{order.data.total_tax_free_amount > 0}}",
+                            "props": { "className": "flex items-center justify-between text-sm" },
+                            "children": [
+                                {
+                                    "type": "basic",
+                                    "name": "Span",
+                                    "props": { "className": "text-gray-500 dark:text-gray-400" },
+                                    "text": "$t:sirsoft-pay_nicepayments.user.tax_free_amount"
+                                },
+                                {
+                                    "type": "basic",
+                                    "name": "Span",
+                                    "props": { "className": "font-medium text-gray-900 dark:text-white" },
+                                    "text": "{{order.data.total_tax_free_amount_formatted}}"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "basic",
+                    "name": "Div",
                     "if": "{{order.data.payment?.pg_provider === 'nicepayments' && order.data.payment?.transaction_id}}",
                     "props": { "className": "pt-4 mt-2 border-t border-gray-200 dark:border-gray-700" },
                     "children": [

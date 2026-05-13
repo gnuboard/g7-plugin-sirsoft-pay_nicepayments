@@ -109,7 +109,11 @@
         "view_receipt": "영수증 보기",
         "view_cash_receipt": "현금영수증 조회",
         "easy_pay_label": "간편결제 서비스",
-        "test_mode_badge": "테스트 결제"
+        "test_mode_badge": "테스트 결제",
+        "tax_breakdown_title": "세금 상세",
+        "supply_amount": "공급가액",
+        "vat_amount": "부가세",
+        "tax_free_amount": "면세금액"
     },
     "messages": {
         "refund": {
