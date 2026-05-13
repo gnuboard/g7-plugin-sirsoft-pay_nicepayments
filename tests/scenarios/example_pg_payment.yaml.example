@@ -2,9 +2,6 @@
 # 실제 매니페스트로 채택할 때 .yaml 로 이름 변경 + test_files 의 실재 경로 매핑
 #
 # 참조: docs/testing-guide.md "기능 단위 시나리오 매트릭스"
-# 검증: node .claude/scripts/validate-test-scenario.cjs <path>
-# 스켈레톤: node .claude/scripts/scaffold-test-cases.cjs <path> --out=...
-# audit: node .claude/scripts/audit-branch.cjs --rule test-scenario-coverage --working
 
 feature: order_payment_pg_nicepayments
 description: 나이스페이먼츠 PG 를 통한 주문 결제 흐름 (회원/비회원, 결제 수단, 가상계좌, 에스크로, 간편결제 등 도메인 변수 cross product)
