@@ -339,7 +339,7 @@
                     "id": "nicepay_verify_panel",
                     "type": "basic",
                     "name": "Div",
-                    "if": "{{(order.data?.payments?.filter(p => p.transaction_id) ?? []).length > 0}}",
+                    "if": "{{(order.data?.payments?.filter(p => p.transaction_id && p.pg_provider === 'nicepayments') ?? []).length > 0}}",
                     "props": {
                         "className": "card"
                     },
@@ -615,7 +615,7 @@
                     "id": "nicepay_vbank_notifications_panel",
                     "type": "basic",
                     "name": "Div",
-                    "if": "{{(order.data?.payments?.filter(p => p.payment_method === 'vbank') ?? []).length > 0}}",
+                    "if": "{{(order.data?.payments?.filter(p => p.payment_method === 'vbank' && p.pg_provider === 'nicepayments') ?? []).length > 0}}",
                     "props": { "className": "card mt-4" },
                     "children": [
                         {
