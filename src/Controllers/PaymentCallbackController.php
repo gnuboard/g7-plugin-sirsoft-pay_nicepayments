@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Exceptions\PaymentAmountMismatchException;
+use Modules\Sirsoft\Ecommerce\Helpers\DeviceDetector;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\AuthCallbackRequest;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\VbankNotifyRequest;
@@ -216,7 +217,7 @@ class PaymentCallbackController
                         'rcpt_tid' => $pgResponse['RcptTID'] ?? null,
                         'pg_raw_response' => $this->sanitizePgResponse($pgResponse),
                     ],
-                    'payment_device' => $this->detectDevice($request),
+                    'payment_device' => DeviceDetector::detect($request),
                 ], $amt);
 
                 // pg_provider 및 is_escrow 명시 업데이트
@@ -614,17 +615,4 @@ class PaymentCallbackController
         ];
     }
 
-    private function detectDevice(Request $request): string
-    {
-        $userAgent = $request->userAgent() ?? '';
-        $mobileKeywords = ['Mobile', 'Android', 'iPhone', 'iPad', 'iPod'];
-
-        foreach ($mobileKeywords as $keyword) {
-            if (stripos($userAgent, $keyword) !== false) {
-                return 'mobile';
-            }
-        }
-
-        return 'pc';
-    }
 }

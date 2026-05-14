@@ -16,7 +16,7 @@
     "g7_version": ">=7.0.0-beta.2",
     "dependencies": {
         "modules": {
-            "sirsoft-ecommerce": ">=1.0.0-beta.2"
+            "sirsoft-ecommerce": ">=1.0.0-beta.4"
         },
         "plugins": {}
     },

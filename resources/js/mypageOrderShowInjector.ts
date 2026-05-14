@@ -8,6 +8,7 @@ interface Payment {
     pg_provider?: string;
     payment_method?: string;
     transaction_id?: string | null;
+    paid_at?: string | null;
     [key: string]: unknown;
 }
 
@@ -105,6 +106,8 @@ async function tryInject(orderNumber: string): Promise<boolean> {
     const { payment } = orderData;
     if (!payment || payment.pg_provider !== 'nicepayments') return true;
     if (!payment.transaction_id) return true;
+    // 영수증 버튼은 결제완료(paid_at 채워짐) 시점에만 표시 — 가상계좌 입금대기 차단
+    if (!payment.paid_at) return true;
 
     if (document.getElementById(ROW_ID)) return true;
 

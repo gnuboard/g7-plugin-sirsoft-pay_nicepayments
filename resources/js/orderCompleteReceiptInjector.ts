@@ -7,6 +7,7 @@ const ORDER_COMPLETE_RE = /^\/shop\/orders\/([^/]+)\/complete$/;
 type Payment = {
     pg_provider: string;
     transaction_id: string | null;
+    paid_at: string | null;
     [key: string]: unknown;
 };
 
@@ -50,7 +51,8 @@ async function injectOnOrderComplete(orderNumber: string): Promise<void> {
     if (document.getElementById(BTN_ID)) return;
 
     const payment = await fetchPayment(orderNumber);
-    if (!payment || payment.pg_provider !== 'nicepayments' || !payment.transaction_id) return;
+    // 입금완료(paid_at 채워짐) 시점에만 영수증 버튼 표시 — 가상계좌 입금대기 차단
+    if (!payment || payment.pg_provider !== 'nicepayments' || !payment.transaction_id || !payment.paid_at) return;
 
     const blueBtn = Array.from(document.querySelectorAll<HTMLButtonElement>('button[type="button"]'))
         .find(b => b.className.includes('bg-blue-600'));
