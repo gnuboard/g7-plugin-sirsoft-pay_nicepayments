@@ -80,7 +80,7 @@
                 {
                     "type": "basic",
                     "name": "Div",
-                    "if": "{{order.data.payment?.pg_provider === 'nicepayments' && order.data.payment?.transaction_id}}",
+                    "if": "{{order.data.payment?.pg_provider === 'nicepayments' && order.data.payment?.transaction_id && order.data.payment?.paid_at}}",
                     "props": { "className": "pt-4 mt-2 border-t border-gray-200 dark:border-gray-700" },
                     "children": [
                         {

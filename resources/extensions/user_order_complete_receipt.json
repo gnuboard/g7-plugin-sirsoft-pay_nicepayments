@@ -8,7 +8,7 @@
                 {
                     "type": "basic",
                     "name": "Div",
-                    "if": "{{orderData?.data?.payment?.pg_provider === 'nicepayments' && orderData?.data?.payment?.transaction_id}}",
+                    "if": "{{orderData?.data?.payment?.pg_provider === 'nicepayments' && orderData?.data?.payment?.transaction_id && orderData?.data?.payment?.paid_at}}",
                     "props": { "className": "pt-4 mt-2 border-t border-gray-200 dark:border-gray-700" },
                     "children": [
                         {
