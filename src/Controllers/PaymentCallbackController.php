@@ -15,6 +15,7 @@ use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Exceptions\PaymentAmountMismatchException;
 use Modules\Sirsoft\Ecommerce\Helpers\DeviceDetector;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
+use Plugins\Sirsoft\PayNicepayments\Concerns\PreventsReplayCallback;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\AuthCallbackRequest;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\VbankNotifyRequest;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
@@ -29,6 +30,8 @@ use Plugins\Sirsoft\PayNicepayments\Support\UrlHelper;
  */
 class PaymentCallbackController
 {
+    use PreventsReplayCallback;
+
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
 
     /** 성공 결제 방법 ResultCode 목록 */
@@ -199,6 +202,14 @@ class PaymentCallbackController
                     'vbank_number' => $pgResponse['VbankNum'] ?? null,
                 ]);
             } else {
+                // Replay 가드: 동일 TID 가 이미 paid 상태면 중복 처리하지 않고 성공 페이지로 복귀
+                $effectiveTid = (string) ($pgResponse['TID'] ?? $txTid);
+                if ($this->wasAlreadyPaid($effectiveTid)) {
+                    $this->logReplayDetected($effectiveTid, $moid, 'authCallback (card)');
+
+                    return redirect($this->resolveSuccessUrl($moid));
+                }
+
                 // 신용카드/기타: 즉시 결제 완료 처리
                 $this->orderService->completePayment($order, [
                     'transaction_id' => $pgResponse['TID'] ?? $txTid,
