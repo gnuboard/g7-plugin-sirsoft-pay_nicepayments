@@ -4,6 +4,12 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
 
+## [Unreleased]
+
+### Security
+
+- 결제 콜백 중복 처리 방어 추가 — 동일 거래번호로 카드 결제 콜백이 두 번 도착해도 결제완료/마일리지 적립 등이 중복 실행되지 않도록 멱등 응답 처리
+
 ## [1.0.0-beta.1] - 2026-04-22
 
 ### Changed
