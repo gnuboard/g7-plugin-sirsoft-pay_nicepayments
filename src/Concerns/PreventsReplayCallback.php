@@ -35,7 +35,7 @@ trait PreventsReplayCallback
 
         return OrderPayment::query()
             ->where('transaction_id', $transactionId)
-            ->where('payment_status', PaymentStatusEnum::Paid)
+            ->where('payment_status', PaymentStatusEnum::PAID)
             ->exists();
     }
 
