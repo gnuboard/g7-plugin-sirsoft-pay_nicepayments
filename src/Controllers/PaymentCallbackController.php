@@ -9,6 +9,7 @@ use App\Services\PluginSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use App\Contracts\Extension\CacheInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
@@ -41,6 +42,7 @@ class PaymentCallbackController
         private readonly OrderProcessingService $orderService,
         private readonly PluginSettingsService $pluginSettingsService,
         private readonly NicePaymentsApiService $apiService,
+        private readonly CacheInterface $cache,
     ) {}
 
     /**
@@ -104,6 +106,22 @@ class PaymentCallbackController
         $netCancelUrl = $validated['NetCancelURL'];
         $signature = $validated['Signature'];
 
+        // AuthToken freshness 가드 — NicePay 콜백 페이로드에 명시적 timestamp 가 없어
+        // 동일 AuthToken 으로 짧은 시간 안에 중복 콜백 시도되는 stale replay 가능.
+        // Cache 기반 60초 윈도우 디듀프로 보조 방어 (HIGH 2 의 transaction_id replay 가드
+        // 외에 추가 계층). transaction_id 까지 도달하기 전 인증 단계 자체에서 차단.
+        $replayCacheKey = 'nicepay_auth_token_seen:' . hash('sha256', $mid . ':' . $authToken . ':' . $txTid);
+        if ($this->cache->has($replayCacheKey)) {
+            Log::warning('NicePayments: duplicate authCallback within freshness window — replay suspected', [
+                'moid'  => $moid,
+                'txTid' => $txTid,
+                'ip'    => $request->ip(),
+            ]);
+
+            return redirect($this->resolveSuccessUrl($moid));
+        }
+        $this->cache->put($replayCacheKey, true, 60);
+
         // 2단계: MID 일치 확인
         if ($mid !== $this->apiService->getMid()) {
             Log::error('NicePayments: MID mismatch', [
@@ -150,6 +168,11 @@ class PaymentCallbackController
                 ]);
 
                 $this->orderService->failPayment($order, $resultCode, $pgResponse['ResultMsg'] ?? '');
+
+                // authorize 실패 — NextAppURL 호출이 거부됐어도 PG 측에 잔존 승인이 있을
+                // 수 있어 net cancel 호출. NicePay 가 미승인 상태이면 net cancel API 가
+                // safe-no-op 으로 동작하므로 모든 실패 경로에서 호출해 안전.
+                $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
 
                 return redirect($this->resolveFailUrl([
                     'error' => 'authorize_failed',
