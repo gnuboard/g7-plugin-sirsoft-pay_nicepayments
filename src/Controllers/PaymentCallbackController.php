@@ -70,31 +70,27 @@ class PaymentCallbackController
         $moid = $validated['Moid'] ?? '';
 
         // 1단계: 인증 결과 코드 확인 (실패/취소 케이스는 여기서 종료)
+        //
+        // 인증 단계 실패는 NextAppURL 호출 (실제 결제 승인) 이전이라 사용자가 아직 결제를
+        // 완료하지 않은 상태. 코드/메시지로 사용자 취소 vs PG 시스템 오류를 구분하려 해도
+        // NicePay 가 보내는 패턴이 다양해 (모바일 결제창 종료 시 '0021 - 결제창을 종료하셨습니다',
+        // 영문 cancel, 코드만 있고 메시지가 비어있는 경우 등) 정확히 분류하기 어렵다.
+        //
+        // 사용자 입장에서 인증단계 실패는 어떤 코드든 "다시 시도" 외에 할 수 있는 액션이 없고
+        // 결제도 일어나지 않았으므로 generic 에러 toast 를 띄우면 오히려 혼란을 준다.
+        // 따라서 인증단계 실패는 모두 silent redirect 로 통일 — 체크아웃에 그대로 머물러
+        // 결제수단을 다시 선택하거나 정보를 수정해 재시도 가능.
+        //
+        // 운영 가시성은 Log 로 충분히 확보 (auth_result_code / auth_result_msg 모두 보존).
         if ($authResultCode !== '0000') {
-            // 사용자가 결제창에서 '종료' 를 눌러 취소한 경우와 실제 결제 실패를 구분.
-            // NicePay 의 사용자 취소 표준 코드는 '9999' 이며, 일부 PG 가 다른 코드 + 메시지로
-            // 보내는 경우도 있어 메시지에 '사용자' 또는 '취소' 가 포함되면 같이 cancellation 으로 처리.
-            $isUserCancelled = $authResultCode === '9999'
-                || str_contains($authResultMsg, '사용자')
-                || str_contains($authResultMsg, '취소');
-
-            Log::info('NicePayments: auth ' . ($isUserCancelled ? 'cancelled by user' : 'failed'), [
+            Log::info('NicePayments: auth phase did not complete', [
                 'moid' => $moid,
                 'auth_result_code' => $authResultCode,
                 'auth_result_msg' => $authResultMsg,
                 'ip' => $request->ip(),
             ]);
 
-            if ($isUserCancelled) {
-                // 사용자 취소: 에러 query 없이 체크아웃으로 깨끗하게 복귀.
-                // (NicePay 다이얼로그에서 이미 사용자가 취소를 선택했으므로 추가 toast 불필요)
-                return redirect($this->resolveFailUrl([]));
-            }
-
-            return redirect($this->resolveFailUrl([
-                'error' => 'auth_failed',
-                'orderId' => $moid,
-            ]));
+            return redirect($this->resolveFailUrl([]));
         }
 
         // 인증 성공 케이스 — 추가 필드 추출

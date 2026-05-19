@@ -148,19 +148,46 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $this->assertEquals('APP12345', $payment->card_approval_number);
     }
 
-    public function test_auth_callback_redirects_to_fail_on_auth_result_code_not_0000(): void
+    /**
+     * 인증 단계(AuthResultCode != '0000') 실패는 사용자가 아직 결제를 끝내지 않은 상태로
+     * 어떤 코드/메시지가 오든 generic 에러 toast 없이 체크아웃으로 깨끗하게 복귀해야 한다.
+     *
+     * 모바일에서 사용자가 취소버튼을 누르거나, PG 가 인증을 거부하거나, 타임아웃이 발생하더라도
+     * 이 시점엔 결제 승인 (NextAppURL 호출) 이 일어나기 전이므로 사용자 입장에서는 "다시 시도"
+     * 외에 할 수 있는 것이 없다. "결제 처리 중 오류" 같은 강한 메시지는 부적절.
+     */
+    public function test_auth_callback_softens_pre_authorize_failures_to_silent_redirect(): void
     {
         $this->mockPluginSettings();
 
-        $params = $this->makeCallbackParams('ORD-TEST-99999', 50000, [
-            'AuthResultCode' => '2001',
-            'AuthResultMsg' => '사용자 취소',
-        ]);
+        $cases = [
+            ['code' => '9999', 'msg' => '사용자 취소'],                  // 표준 사용자 취소
+            ['code' => '2001', 'msg' => '사용자 취소'],                  // 한국어 사용자 메시지
+            ['code' => '0021', 'msg' => '결제창을 종료하셨습니다'],       // 결제창 종료 (취소 키워드 없음)
+            ['code' => '8001', 'msg' => 'User cancelled'],               // 영문 cancel
+            ['code' => 'F004', 'msg' => '지불 거절'],                    // 사용자/취소 키워드 없는 PG 거절
+            ['code' => '5500', 'msg' => '인증 시간 초과'],                // 타임아웃
+            ['code' => '0033', 'msg' => ''],                              // 메시지 없는 실패
+        ];
 
-        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+        foreach ($cases as $case) {
+            $params = $this->makeCallbackParams('ORD-TEST-99999', 50000, [
+                'AuthResultCode' => $case['code'],
+                'AuthResultMsg' => $case['msg'],
+            ]);
 
-        $response->assertRedirect();
-        $this->assertStringContainsString('error=2001', $response->headers->get('Location'));
+            $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+
+            $response->assertRedirect();
+            $location = $response->headers->get('Location');
+
+            $this->assertStringNotContainsString(
+                'error=',
+                $location,
+                "AuthResultCode={$case['code']} ({$case['msg']}) 은 인증단계 실패이므로 error query 없이 체크아웃으로 복귀해야 한다. 실제 redirect: {$location}",
+            );
+            $this->assertStringContainsString('/shop/checkout', $location);
+        }
     }
 
     public function test_auth_callback_redirects_to_fail_on_mid_mismatch(): void
