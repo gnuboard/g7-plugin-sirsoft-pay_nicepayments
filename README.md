@@ -53,12 +53,32 @@ https://your-domain.com/plugins/sirsoft-pay_nicepayments/payment/vbank-notify
 
 ## 결제 흐름
 
+### PC / 모바일 결제 (인증 + 승인 2단계)
+
 ```
-브라우저  →  goPay(form)  →  나이스페이 결제창
-결제창    →  POST /payment/callback  →  authCallback()
-서버      →  POST NextAppURL  →  승인 API 호출
+브라우저  →  goPay(form) / 모바일 결제창 form POST
+결제창    →  POST /payment/callback  →  authCallback() (1단계 인증)
+서버      →  POST NextAppURL  →  승인 API 호출 (2단계)
 승인 완료 →  completePayment()  →  성공 페이지 리다이렉트
 ```
+
+### 결제창 취소 / 인증 실패
+
+모바일 결제창에서 사용자가 취소버튼을 누르거나 PG 가 인증을 거부하면 (AuthResultCode != '0000') 결제 승인 (NextAppURL 호출) 이전이므로 사용자에게 generic 오류 메시지를 띄우지 않고 체크아웃으로 silent redirect 합니다. 운영 가시성은 로그(`auth_result_code` / `auth_result_msg`) 로 보존됩니다. 2단계 이후 hard failure (signature / mid / amount / authorize) 는 종전대로 `?error=` 쿼리 부착하여 안내합니다.
+
+### 결제 취소 / 부분취소
+
+```text
+관리자 주문 취소 요청 (cancel_pg=true)
+→ 코어가 sirsoft-ecommerce.payment.refund 필터 훅 발화
+→ PaymentRefundListener 가 NicePayments cancelPayment API 호출
+   · 전액취소: isPartial=0
+   · 부분취소: isPartial=1
+→ 코어가 환불 레코드 생성 + 쿠폰 / 마일리지 / 재고 복원
+→ CancelActivityLogListener 가 PG 응답 시각·취소 TID를 활동 로그에 기록
+```
+
+배송비가 포함된 주문은 전체취소 시 배송비도 함께 환불 레코드에 반영되고, 쿠폰이 적용된 주문은 실결제금액(쿠폰 차감 후) 이 PG cancelAmt 로 전달됩니다. 부분취소 시 쿠폰 최소 주문금액 조건을 더 이상 충족하지 못하면 코어가 취소 자체를 거부 (422) 하여 PG 호출이 발생하지 않습니다. 가상계좌 입금 완료 건은 환불 계좌 정보가 필요해 일반 취소 API 가 아닌 별도 어드민 환불 계좌 API 경로로 처리됩니다.
 
 ## 가용 훅 (Hook)
 
@@ -70,6 +90,8 @@ https://your-domain.com/plugins/sirsoft-pay_nicepayments/payment/vbank-notify
 |---------|------|------|
 | `sirsoft-pay_nicepayments.payment.before_authorize` | 서버 승인 API 호출 직전 | `Order $order, array $pgParams` |
 | `sirsoft-pay_nicepayments.payment.after_authorize` | 서버 승인 API 응답 직후 | `Order $order, array $pgResponse` |
+| `sirsoft-pay_nicepayments.payment.before_cancel` | NicePayments 취소 API 호출 직전 | `Order $order, OrderPayment $payment, float $refundAmount` |
+| `sirsoft-pay_nicepayments.payment.after_cancel` | NicePayments 취소 API 호출 직후 | `Order $order, OrderPayment $payment, array $pgResponse` |
 | `sirsoft-pay_nicepayments.payment.refund_failed` | 환불 API 호출 실패 시 | `Order $order, OrderPayment $payment, array $context` |
 
 #### `refund_failed` context 구조

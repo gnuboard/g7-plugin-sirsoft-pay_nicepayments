@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
+use App\Extension\HookListenerRegistrar;
 use App\Extension\HookManager;
 use App\Models\User;
 use Illuminate\Support\Facades\Queue;
@@ -61,14 +62,19 @@ class ShippingAndCouponCancellationTest extends PluginTestCase
         $this->adminUser = $this->createAdminUser(['sirsoft-ecommerce.orders.update']);
         $this->createCancelSequences();
 
-        // PaymentRefundListener 는 CoreServiceProvider → PluginManager::loadPlugins() 에서
-        // HookListenerRegistrar 를 통해 이미 등록된다. 여기서 중복 등록하면 cancelPayment 가
-        // 2회 호출되어 mock 기대값이 어긋나므로 수동 등록을 제거한다.
+        // 테스트 DB 시더가 plugin 레코드를 등록하지 않아
+        // PluginManager::registerPluginHookListeners() 의 active 가드에서 skip 되므로
+        // 테스트에서 직접 listener 를 등록한다. HookListenerRegistrar 가 idempotent 이라
+        // 운영 환경에서 listener 가 이미 등록되어 있으면 중복 호출되지 않음.
+        HookListenerRegistrar::register(PaymentRefundListener::class, 'sirsoft-pay_nicepayments');
     }
 
     protected function tearDown(): void
     {
         HookManager::resetAll();
+        // HookListenerRegistrar 의 static $registered 캐시도 비워야
+        // 다음 테스트의 setUp 에서 register() 가 실제 등록을 수행한다.
+        HookListenerRegistrar::clear();
         parent::tearDown();
     }
 
@@ -467,7 +473,7 @@ class ShippingAndCouponCancellationTest extends PluginTestCase
             ->with(
                 self::TID,
                 $this->anything(),
-                $this->anything(),
+                23000,
                 $this->anything(),
                 1,          // isPartial = 1 (부분취소)
                 null, null, null,
@@ -494,6 +500,8 @@ class ShippingAndCouponCancellationTest extends PluginTestCase
 
         $refund = OrderRefund::where('order_id', $order->id)->first();
         $this->assertNotNull($refund, '부분취소 후 환불 레코드가 생성되어야 합니다');
+        $this->assertEquals(3000, (float) $refund->refund_shipping_amount, '부분취소 시 배송비 차액 3,000원이 포함되어야 합니다');
+        $this->assertEquals(23000, (float) $refund->refund_amount, '상품(20,000) + 배송비 차액(3,000) = 23,000원 환불');
     }
 
     /**

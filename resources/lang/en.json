@@ -113,7 +113,14 @@
         "tax_breakdown_title": "Tax Breakdown",
         "supply_amount": "Supply Amount",
         "vat_amount": "VAT",
-        "tax_free_amount": "Tax-Free Amount"
+        "tax_free_amount": "Tax-Free Amount",
+        "vbank_deposit_info": "Virtual Account Deposit Info",
+        "vbank_bank": "Bank",
+        "vbank_account": "Account Number",
+        "vbank_holder": "Account Holder",
+        "vbank_amount": "Deposit Amount",
+        "vbank_due": "Deposit Due",
+        "vbank_notice": "If deposit is not completed by the due date, the order will be auto-cancelled."
     },
     "messages": {
         "refund": {

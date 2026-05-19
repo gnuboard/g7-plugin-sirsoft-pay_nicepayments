@@ -118,22 +118,29 @@ export function installOrderResponseInterceptor(): void {
             return originalFetch(input, init);
         }
 
-        // 요청 body에서 nicepay_* 감지 → card 로 교체 후 원본 방식 보존
+        // 요청 body에서 payment_method 추출. nicepay_* (간편결제) 만 'card' 로 교체.
+        // 일반 결제수단(card / vbank / bank / phone)도 그대로 보존해 requestPaymentHandler
+        // 호출 시 정확한 결제수단으로 결제창을 연다 (이전엔 nicepay_* 만 추적해서
+        // 가상계좌/계좌이체/휴대폰 선택 시 'card' 로 폴백되는 회귀가 있었음).
         let originalPaymentMethod: string | undefined;
+        let isEasyPay = false;
         let modifiedInit = init;
 
         if (init?.body && typeof init.body === 'string') {
             const pm = extractPaymentMethodFromBody(init.body);
-            if (typeof pm === 'string' && pm.startsWith('nicepay_')) {
+            if (typeof pm === 'string' && pm.length > 0) {
                 originalPaymentMethod = pm;
-                modifiedInit = { ...init, body: replacePaymentMethodInBody(init.body, 'card') };
-                logger.info(`easy pay detected: replacing payment_method '${pm}' → 'card'`);
+                if (pm.startsWith('nicepay_')) {
+                    isEasyPay = true;
+                    modifiedInit = { ...init, body: replacePaymentMethodInBody(init.body, 'card') };
+                    logger.info(`easy pay detected: replacing payment_method '${pm}' → 'card'`);
+                }
             }
         }
 
         // easy pay일 때는 browserFetch(원본)를 사용해 NHN KCP 등 다른 PG 인터셉터를 우회한다.
         // "타 PG와 사용가능함"이 ON이고 기본 PG가 NHN KCP일 때 NHN KCP 결제창이 먼저 열리는 것을 방지.
-        const fetchFn = originalPaymentMethod ? browserFetch : originalFetch;
+        const fetchFn = isEasyPay ? browserFetch : originalFetch;
         const response = await fetchFn(input, modifiedInit);
 
         // 2xx 응답만 처리 (4xx/5xx 오류 응답은 그대로 통과)
@@ -151,7 +158,6 @@ export function installOrderResponseInterceptor(): void {
         }
 
         const responseData = (envelope?.data ?? envelope) as Record<string, unknown> | null;
-        const isEasyPay = !!originalPaymentMethod;
 
         // 일반 결제: PG 결제가 필요 없으면 통과
         // 간편결제(nicepay_*): requires_pg_payment=false여도 계속 처리

@@ -1,6 +1,7 @@
 const PLUGIN_ID = 'sirsoft-pay_nicepayments';
 const FLAG = '__nicepayOrderShowInjectorInstalled';
 const ROW_ID = 'nicepay-mp-receipt-row';
+const VBANK_BLOCK_ID = 'nicepay-mp-vbank-info';
 
 const ORDER_SHOW_RE = /^\/mypage\/orders\/([^/]+)$/;
 
@@ -9,6 +10,10 @@ interface Payment {
     payment_method?: string;
     transaction_id?: string | null;
     paid_at?: string | null;
+    vbank_name?: string | null;
+    vbank_number?: string | null;
+    vbank_holder?: string | null;
+    vbank_due_at?: string | null;
     [key: string]: unknown;
 }
 
@@ -99,20 +104,102 @@ function buildReceiptRow(orderNumber: string): HTMLElement {
     return row;
 }
 
+function formatVbankDueAt(raw: string | null | undefined): string {
+    if (!raw) return '';
+    try {
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) return raw;
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch {
+        return raw;
+    }
+}
+
+function buildVbankRow(label: string, value: string, valueClass = 'font-medium text-gray-900 dark:text-white'): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'flex justify-between text-sm';
+    const l = document.createElement('span');
+    l.className = 'text-gray-600 dark:text-gray-400';
+    l.textContent = label;
+    const v = document.createElement('span');
+    v.className = valueClass;
+    v.textContent = value;
+    row.appendChild(l);
+    row.appendChild(v);
+    return row;
+}
+
+function buildVbankBlock(orderData: OrderData): HTMLElement {
+    const p = orderData.payment ?? {};
+    const wrap = document.createElement('div');
+    wrap.id = VBANK_BLOCK_ID;
+    wrap.className = 'pt-4 mt-2 border-t border-gray-200 dark:border-gray-700';
+
+    const inner = document.createElement('div');
+    inner.className = 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4';
+
+    const title = document.createElement('h3');
+    title.className = 'text-sm font-semibold text-blue-800 dark:text-blue-300 mb-3';
+    title.textContent = '가상계좌 입금 안내';
+
+    const rows = document.createElement('div');
+    rows.className = 'space-y-2';
+    rows.appendChild(buildVbankRow('은행', p.vbank_name ?? ''));
+    rows.appendChild(buildVbankRow('계좌번호', p.vbank_number ?? '', 'font-medium font-mono text-gray-900 dark:text-white'));
+    rows.appendChild(buildVbankRow('예금주', p.vbank_holder ?? ''));
+    rows.appendChild(buildVbankRow('입금 금액', orderData.total_amount_formatted ?? '', 'font-bold text-blue-600 dark:text-blue-400'));
+
+    const dueRaw = p.vbank_due_at;
+    if (dueRaw) {
+        const dueRow = document.createElement('div');
+        dueRow.className = 'flex justify-between text-sm pt-2 border-t border-blue-200 dark:border-blue-700 mt-2';
+        const dueLabel = document.createElement('span');
+        dueLabel.className = 'text-gray-600 dark:text-gray-400';
+        dueLabel.textContent = '입금 기한';
+        const dueValue = document.createElement('span');
+        dueValue.className = 'font-medium text-red-600 dark:text-red-400';
+        dueValue.textContent = formatVbankDueAt(dueRaw);
+        dueRow.appendChild(dueLabel);
+        dueRow.appendChild(dueValue);
+        rows.appendChild(dueRow);
+    }
+
+    inner.appendChild(title);
+    inner.appendChild(rows);
+
+    if (!p.paid_at) {
+        const notice = document.createElement('p');
+        notice.className = 'text-xs text-blue-700 dark:text-blue-300 mt-3';
+        notice.textContent = '입금 기한 내에 입금이 완료되지 않으면 주문이 자동 취소됩니다.';
+        inner.appendChild(notice);
+    }
+
+    wrap.appendChild(inner);
+    return wrap;
+}
+
 async function tryInject(orderNumber: string): Promise<boolean> {
     const orderData = getOrderFromState(orderNumber);
     if (!orderData) return false;
 
     const { payment } = orderData;
     if (!payment || payment.pg_provider !== 'nicepayments') return true;
+
+    const container = findPaymentContainer();
+    if (!container) return false;
+
+    // 가상계좌 입금 안내 — 결제수단이 vbank 이고 가상계좌 번호 발급된 경우 표시 (paid_at 무관: 입금 전후 모두 표시).
+    if (payment.payment_method === 'vbank' && payment.vbank_number && !document.getElementById(VBANK_BLOCK_ID)) {
+        container.appendChild(buildVbankBlock(orderData));
+        console.info(`[${PLUGIN_ID}] vbank info injected on mypage order show`);
+    }
+
     if (!payment.transaction_id) return true;
     // 영수증 버튼은 결제완료(paid_at 채워짐) 시점에만 표시 — 가상계좌 입금대기 차단
     if (!payment.paid_at) return true;
 
     if (document.getElementById(ROW_ID)) return true;
-
-    const container = findPaymentContainer();
-    if (!container) return false;
 
     container.appendChild(buildReceiptRow(orderNumber));
     console.info(`[${PLUGIN_ID}] receipt button injected on mypage order show`);
