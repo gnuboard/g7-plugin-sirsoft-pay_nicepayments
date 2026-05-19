@@ -183,6 +183,7 @@ class Plugin extends AbstractPlugin
         return [
             Listeners\RegisterPgProviderListener::class,
             Listeners\PaymentRefundListener::class,
+            Listeners\CancelActivityLogListener::class,
         ];
     }
 

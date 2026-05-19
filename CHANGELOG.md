@@ -4,6 +4,12 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
 
+## [Unreleased]
+
+### Added
+
+- PG 측 결제 취소가 확인된 시점에 활동 로그가 별도로 기록되도록 보강 — 운영자가 PG 응답 시각 / 취소 TID 등 사후 추적에 활용 가능.
+
 ## [1.0.0-beta.2] - 2026-05-16
 
 ### Security
