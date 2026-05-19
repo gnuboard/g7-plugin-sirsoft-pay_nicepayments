@@ -109,4 +109,156 @@ describe('requestPaymentHandler', () => {
             (window as unknown as Record<string, unknown>).__sirsoftNicepayPaymentInProgress
         ).toBe(false);
     });
+
+    /**
+     * 모바일 환경에서 카드 외 결제수단 선택 시 PayMethod 회귀 차단.
+     *
+     * 증상 (회귀 시): 모바일에서 가상계좌/계좌이체/휴대폰결제를 선택해도
+     *   NicePay 모바일 결제창이 카드결제 화면으로 열림.
+     * 원인 후보: requestPaymentHandler 의 paymentMethod → payMethodMap 매핑이
+     *   isMobile 분기 진입 전에 적용되어야 하는데, 누락되거나 모바일 코드 경로에서
+     *   덮어쓰이면 PayMethod 가 항상 CARD 로 고정.
+     *
+     * 검증 전략: navigator.userAgentData.mobile = true 로 모바일 판정 강제.
+     *   fetch (signData) 와 apiGet (client-config + order) 을 mock 한 뒤,
+     *   HTMLFormElement.prototype.submit 를 spy 로 가로채 form 의 hidden input
+     *   PayMethod 값을 검증한다 (실제 NicePay 모바일 endpoint 로 redirect 되지 않음).
+     */
+    describe('모바일 환경 일반 결제수단 PayMethod 매핑', () => {
+        const NICEPAY_MOBILE_HOST = 'web.nicepay.co.kr';
+
+        let submitSpy: ReturnType<typeof vi.spyOn>;
+        let fetchSpy: ReturnType<typeof vi.fn>;
+        let originalUserAgentData: PropertyDescriptor | undefined;
+
+        beforeEach(() => {
+            originalUserAgentData = Object.getOwnPropertyDescriptor(navigator, 'userAgentData');
+            Object.defineProperty(navigator, 'userAgentData', {
+                value: { mobile: true },
+                configurable: true,
+            });
+
+            apiGet.mockImplementation((url: string) => {
+                if (url.includes('client-config/nicepayments')) {
+                    return Promise.resolve({
+                        data: {
+                            mid: 'SRpaytestm',
+                            sdk_url: 'https://example/sdk.js',
+                            sign_data_url: '/api/plugins/sirsoft-pay_nicepayments/sign-data',
+                            useEscrow: false,
+                        },
+                    });
+                }
+                if (url.includes('/user/orders/')) {
+                    return Promise.resolve({ data: {} });
+                }
+                return Promise.resolve({});
+            });
+
+            fetchSpy = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    ediDate: '20260101000000',
+                    signData: 'fake-sig',
+                    mid: 'SRpaytestm',
+                }),
+            });
+            (window as unknown as Record<string, unknown>).fetch = fetchSpy;
+
+            submitSpy = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+        });
+
+        afterEach(() => {
+            if (originalUserAgentData) {
+                Object.defineProperty(navigator, 'userAgentData', originalUserAgentData);
+            } else {
+                delete (navigator as unknown as Record<string, unknown>).userAgentData;
+            }
+            submitSpy.mockRestore();
+            delete (window as unknown as Record<string, unknown>).fetch;
+        });
+
+        function getSubmittedPayMethod(): string | null {
+            const form = submitSpy.mock.instances[0] as HTMLFormElement;
+            const input = form.querySelector('input[name="PayMethod"]') as HTMLInputElement | null;
+            return input?.value ?? null;
+        }
+
+        function getSubmittedFormAction(): string {
+            const form = submitSpy.mock.instances[0] as HTMLFormElement;
+            return form.action;
+        }
+
+        it("가상계좌(vbank)는 PayMethod='VBANK' 로 모바일 endpoint 에 POST", async () => {
+            await requestPaymentHandler({
+                params: { pgPaymentData: PG_PAYMENT, paymentMethod: 'vbank' },
+            });
+
+            expect(submitSpy).toHaveBeenCalledTimes(1);
+            expect(getSubmittedPayMethod()).toBe('VBANK');
+            expect(getSubmittedFormAction()).toContain(NICEPAY_MOBILE_HOST);
+        });
+
+        it("계좌이체(bank)는 PayMethod='BANK' 로 모바일 endpoint 에 POST", async () => {
+            await requestPaymentHandler({
+                params: { pgPaymentData: PG_PAYMENT, paymentMethod: 'bank' },
+            });
+
+            expect(submitSpy).toHaveBeenCalledTimes(1);
+            expect(getSubmittedPayMethod()).toBe('BANK');
+            expect(getSubmittedFormAction()).toContain(NICEPAY_MOBILE_HOST);
+        });
+
+        it("휴대폰결제(phone)는 PayMethod='CELLPHONE' 로 모바일 endpoint 에 POST", async () => {
+            await requestPaymentHandler({
+                params: { pgPaymentData: PG_PAYMENT, paymentMethod: 'phone' },
+            });
+
+            expect(submitSpy).toHaveBeenCalledTimes(1);
+            expect(getSubmittedPayMethod()).toBe('CELLPHONE');
+            expect(getSubmittedFormAction()).toContain(NICEPAY_MOBILE_HOST);
+        });
+
+        it("신용카드(card)는 PayMethod='CARD'", async () => {
+            await requestPaymentHandler({
+                params: { pgPaymentData: PG_PAYMENT, paymentMethod: 'card' },
+            });
+
+            expect(submitSpy).toHaveBeenCalledTimes(1);
+            expect(getSubmittedPayMethod()).toBe('CARD');
+        });
+
+        it("paymentMethod 미명시 시 _local.paymentMethod 로 fallback", async () => {
+            (window as unknown as Record<string, unknown>).__templateApp = {
+                globalState: { _local: { paymentMethod: 'vbank' } },
+            };
+
+            await requestPaymentHandler({ params: { pgPaymentData: PG_PAYMENT } });
+
+            expect(getSubmittedPayMethod()).toBe('VBANK');
+
+            delete (window as unknown as Record<string, unknown>).__templateApp;
+        });
+
+        it("간편결제(nicepay_kakaopay)는 PayMethod='CARD' + DirectKakao=Y", async () => {
+            await requestPaymentHandler({
+                params: { pgPaymentData: PG_PAYMENT, paymentMethod: 'nicepay_kakaopay' },
+            });
+
+            const form = submitSpy.mock.instances[0] as HTMLFormElement;
+            const reservedInput = form.querySelector('input[name="NicepayReserved"]') as HTMLInputElement | null;
+
+            expect(getSubmittedPayMethod()).toBe('CARD');
+            expect(reservedInput?.value).toBe('DirectKakao=Y');
+        });
+
+        it('모바일 form 은 acceptCharset=euc-kr', async () => {
+            await requestPaymentHandler({
+                params: { pgPaymentData: PG_PAYMENT, paymentMethod: 'vbank' },
+            });
+
+            const form = submitSpy.mock.instances[0] as HTMLFormElement;
+            expect(form.acceptCharset).toBe('euc-kr');
+        });
+    });
 });
