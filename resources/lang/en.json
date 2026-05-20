@@ -3,7 +3,7 @@
         "title": "NicePayments Settings",
         "description": "NicePayments PG integration settings",
         "test_mode": "Test Mode",
-        "test_mode_hint": "No real payments occur in test mode.",
+        "test_mode_hint": "Real card authorization/withdrawal notifications may still occur in test mode. Test account payments are batch-cancelled around 23:30 on the same day.",
         "section_test_keys": "Test Key Settings",
         "test_mid": "Test Merchant ID (MID)",
         "test_mid_hint": "NicePayments shared test MID. No change needed for testing.",
@@ -98,7 +98,7 @@
         "escrow_register_success": "Escrow delivery has been registered.",
         "escrow_register_error": "Failed to register escrow delivery.",
         "test_mode_badge": "TEST",
-        "test_mode_order_notice": "This order was processed in test mode.",
+        "test_mode_order_notice": "This order was processed in test mode. Real card authorization/withdrawal notifications may occur, but NicePayments test account payments are batch-cancelled around 23:30 on the same day. Verify live payment status before shipping.",
         "test_mode_orders_in_list": "Test payment orders included"
     },
     "easy_pay": {
