@@ -17,7 +17,6 @@ use Modules\Sirsoft\Ecommerce\Exceptions\PaymentAmountMismatchException;
 use Modules\Sirsoft\Ecommerce\Helpers\DeviceDetector;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\PreventsReplayCallback;
-use Plugins\Sirsoft\PayNicepayments\Concerns\SanitizesPgResponse;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\AuthCallbackRequest;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\VbankNotifyRequest;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
@@ -33,83 +32,11 @@ use Plugins\Sirsoft\PayNicepayments\Support\UrlHelper;
 class PaymentCallbackController
 {
     use PreventsReplayCallback;
-    use SanitizesPgResponse;
 
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
 
     /** 성공 결제 방법 ResultCode 목록 */
     private const SUCCESS_RESULT_CODES = ['3001', '4000', '4100', 'A000', '7001'];
-
-    private const AUTH_RESPONSE_KEYS = [
-        'ResultCode',
-        'ResultMsg',
-        'TID',
-        'Moid',
-        'MID',
-        'Amt',
-        'PayMethod',
-        'AppNo',
-        'AuthDate',
-        'AuthCode',
-        'CardCode',
-        'CardName',
-        'IssuCardCode',
-        'IssuCardName',
-        'AcquCardCode',
-        'AcquCardName',
-        'CardQuota',
-        'CardInterest',
-        'CardCl',
-        'CcPartCl',
-        'CardNoInterest',
-        'RcptTID',
-        'EscrowYN',
-        'MallReserved',
-        'Currency',
-    ];
-
-    private const VBANK_ISSUE_RESPONSE_KEYS = [
-        'ResultCode',
-        'ResultMsg',
-        'TID',
-        'Moid',
-        'MID',
-        'Amt',
-        'PayMethod',
-        'AuthDate',
-        'AuthCode',
-        'VbankBankCode',
-        'VbankBankName',
-        'VbankExpDate',
-        'VbankExpTime',
-        'RcptTID',
-        'EscrowYN',
-        'MallReserved',
-    ];
-
-    private const VBANK_NOTIFY_RESPONSE_KEYS = [
-        'PG',
-        'PayMethod',
-        'MID',
-        'MOID',
-        'TID',
-        'Amt',
-        'ResultCode',
-        'ResultMsg',
-        'AuthDate',
-        'AuthCode',
-        'StateCd',
-        'VbankName',
-        'FnCd',
-        'FnName',
-        'CancelDate',
-        'CancelMOID',
-        'MallReserved',
-        'MallReserved1',
-        'TransType',
-        'CartCnt',
-        'RcptTID',
-    ];
 
     public function __construct(
         private readonly OrderProcessingService $orderService,
@@ -283,8 +210,7 @@ class PaymentCallbackController
                             ? $pgResponse['VbankExpDate'] . ($pgResponse['VbankExpTime'] ?? '235959')
                             : null,
                         'is_test_mode' => $this->apiService->isTestMode(),
-                        'pg_response_sanitized' => true,
-                        'pg_raw_response' => $this->sanitizePgResponse($pgResponse, self::VBANK_ISSUE_RESPONSE_KEYS),
+                        'pg_raw_response' => $this->sanitizePgResponse($pgResponse),
                     ];
                     $payment->save();
                 }
@@ -319,8 +245,7 @@ class PaymentCallbackController
                         'auth_date' => $pgResponse['AuthDate'] ?? null,
                         'is_test_mode' => $this->apiService->isTestMode(),
                         'rcpt_tid' => $pgResponse['RcptTID'] ?? null,
-                        'pg_response_sanitized' => true,
-                        'pg_raw_response' => $this->sanitizePgResponse($pgResponse, self::AUTH_RESPONSE_KEYS),
+                        'pg_raw_response' => $this->sanitizePgResponse($pgResponse),
                     ],
                     'payment_device' => DeviceDetector::detect($request),
                 ], $amt);
@@ -532,8 +457,7 @@ class PaymentCallbackController
                         'fn_name' => $validated['FnName'] ?? null,
                         'is_test_mode' => $this->apiService->isTestMode(),
                         'rcpt_tid' => $validated['RcptTID'] ?? null,
-                        'pg_response_sanitized' => true,
-                        'pg_raw_response' => $this->sanitizePgResponse($validated, self::VBANK_NOTIFY_RESPONSE_KEYS),
+                        'pg_raw_response' => $this->sanitizePgResponse($validated),
                         // 어드민 표시용 통보 이력 (전체 누적)
                         'vbank_notifications' => $allNotifications,
                         'vbank_notification_summary' => $this->buildNotificationSummary($allNotifications),
@@ -593,6 +517,14 @@ class PaymentCallbackController
         return UrlHelper::toAbsolute($baseUrl);
     }
 
+    /** PG 응답에서 개인정보(PII) 필드 제거 후 반환 */
+    private function sanitizePgResponse(array $response): array
+    {
+        $piiFields = ['BuyerName', 'BuyerEmail', 'BuyerTel', 'CardNum'];
+
+        return array_diff_key($response, array_flip($piiFields));
+    }
+
     /**
      * 입금통보 1건의 어드민 표시용 entry 생성.
      *
@@ -618,8 +550,7 @@ class PaymentCallbackController
             'vbank_num' => $validated['VbankNum'] ?? null,
             'vbank_name' => $validated['VbankName'] ?? null,
             'cancel_date' => $validated['CancelDate'] ?? null,
-            'raw_sanitized' => true,
-            'raw' => $this->sanitizePgResponse($validated, self::VBANK_NOTIFY_RESPONSE_KEYS),
+            'raw' => $this->sanitizePgResponse($validated),
         ];
     }
 

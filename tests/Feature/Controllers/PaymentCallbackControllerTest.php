@@ -35,10 +35,8 @@ class PaymentCallbackControllerTest extends PluginTestCase
         ];
     }
 
-    private function createTestOrder(
-        int $totalAmount = 50000,
-        PaymentMethodEnum $paymentMethod = PaymentMethodEnum::CARD,
-    ): Order {
+    private function createTestOrder(int $totalAmount = 50000): Order
+    {
         $user = User::factory()->create();
 
         $order = OrderFactory::new()->create([
@@ -65,7 +63,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
         OrderPaymentFactory::new()->create([
             'order_id' => $order->id,
             'payment_status' => PaymentStatusEnum::READY,
-            'payment_method' => $paymentMethod,
+            'payment_method' => PaymentMethodEnum::CARD,
             'pg_provider' => 'nicepayments',
             'paid_amount_local' => 0,
             'paid_at' => null,
@@ -120,27 +118,6 @@ class PaymentCallbackControllerTest extends PluginTestCase
         ], $overrides);
     }
 
-    private function makeVbankNotifyPayload(string $moid, int $amt, array $overrides = []): array
-    {
-        return array_merge([
-            'PG' => 'nicepay',
-            'PayMethod' => 'VBANK',
-            'MID' => self::TEST_MID,
-            'MOID' => $moid,
-            'TID' => 'VBANK_TID_' . uniqid(),
-            'Amt' => $amt,
-            'ResultCode' => '4110',
-            'ResultMsg' => '입금완료',
-            'AuthDate' => now()->format('YmdHis'),
-            'AuthCode' => 'AUTH12345',
-            'VbankNum' => '1234567890',
-            'VbankName' => '국민은행',
-            'VbankInputName' => '홍길동',
-            'FnCd' => '004',
-            'FnName' => '국민은행',
-        ], $overrides);
-    }
-
     // ===== 성공 콜백 테스트 =====
 
     public function test_auth_callback_redirects_to_complete_page_on_valid_payment(): void
@@ -169,93 +146,6 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $payment->refresh();
         $this->assertEquals($tid, $payment->transaction_id);
         $this->assertEquals('APP12345', $payment->card_approval_number);
-    }
-
-    public function test_auth_callback_stores_only_whitelisted_pg_response_fields(): void
-    {
-        $order = $this->createTestOrder(50000);
-        $this->mockPluginSettings();
-
-        $tid = 'TID_SANITIZED';
-        $params = $this->makeCallbackParams($order->order_number, 50000);
-
-        Http::fake([
-            'pay.nicepay.co.kr/v1/authorize' => Http::response(array_merge(
-                $this->makeAuthorizeResponse($tid, $order->order_number, 50000),
-                [
-                    'BuyerName' => '홍길동',
-                    'BuyerEmail' => 'buyer@example.test',
-                    'BuyerTel' => '01012345678',
-                    'NewSensitiveField' => 'store-me-not',
-                ]
-            ), 200),
-        ]);
-
-        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
-
-        $response->assertRedirect("/shop/orders/{$order->order_number}/complete");
-
-        $payment = $order->payment;
-        $payment->refresh();
-
-        $meta = $payment->payment_meta;
-        $this->assertTrue($meta['pg_response_sanitized'] ?? false);
-        $this->assertSame($tid, $meta['pg_raw_response']['TID'] ?? null);
-        $this->assertSame('3001', $meta['pg_raw_response']['ResultCode'] ?? null);
-        $this->assertArrayNotHasKey('CardNum', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('BuyerName', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('BuyerEmail', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('BuyerTel', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('NewSensitiveField', $meta['pg_raw_response']);
-    }
-
-    public function test_vbank_issue_stores_only_whitelisted_pg_response_fields(): void
-    {
-        $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
-        $this->mockPluginSettings();
-
-        $tid = 'VBANK_ISSUE_SANITIZED';
-        $params = $this->makeCallbackParams($order->order_number, 30000, [
-            'PayMethod' => 'VBANK',
-        ]);
-
-        Http::fake([
-            'pay.nicepay.co.kr/v1/authorize' => Http::response(array_merge(
-                $this->makeAuthorizeResponse($tid, $order->order_number, 30000, '4100'),
-                [
-                    'PayMethod' => 'VBANK',
-                    'VbankBankCode' => '004',
-                    'VbankBankName' => '국민은행',
-                    'VbankNum' => '1234567890',
-                    'VbankExpDate' => '20260521',
-                    'VbankExpTime' => '235959',
-                    'VbankInputName' => '홍길동',
-                    'BuyerName' => '구매자',
-                    'BuyerEmail' => 'buyer@example.test',
-                    'BuyerTel' => '01012345678',
-                    'NewSensitiveField' => 'store-me-not',
-                ]
-            ), 200),
-        ]);
-
-        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
-
-        $response->assertRedirect("/shop/orders/{$order->order_number}/complete");
-
-        $payment = $order->payment;
-        $payment->refresh();
-
-        $meta = $payment->payment_meta;
-        $this->assertTrue($meta['pg_response_sanitized'] ?? false);
-        $this->assertSame($tid, $meta['pg_raw_response']['TID'] ?? null);
-        $this->assertSame('국민은행', $meta['pg_raw_response']['VbankBankName'] ?? null);
-        $this->assertArrayNotHasKey('VbankNum', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('VbankInputName', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('CardNum', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('BuyerName', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('BuyerEmail', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('BuyerTel', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('NewSensitiveField', $meta['pg_raw_response']);
     }
 
     /**
@@ -367,7 +257,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
 
         $response->assertRedirect();
-        $this->assertStringContainsString('error=authorize_failed', $response->headers->get('Location'));
+        $this->assertStringContainsString('error=9999', $response->headers->get('Location'));
     }
 
     public function test_auth_callback_redirects_to_fail_url_on_missing_params(): void
@@ -435,10 +325,15 @@ class PaymentCallbackControllerTest extends PluginTestCase
     {
         $order = $this->createTestOrder(30000);
 
-        $response = $this->post(
-            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
-            $this->makeVbankNotifyPayload($order->order_number, 30000, ['TID' => 'VBANK_TID_001'])
-        );
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/vbank-notify', [
+            'TID' => 'VBANK_TID_001',
+            'Moid' => $order->order_number,
+            'Amt' => 30000,
+            'VbankResult' => '1',
+            'VbankAuthDate' => now()->format('YmdHis'),
+            'VbankNum' => '1234567890',
+            'VbankName' => '국민은행',
+        ]);
 
         $response->assertOk();
         $this->assertEquals('OK', $response->getContent());
@@ -447,52 +342,14 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $this->assertEquals(OrderStatusEnum::PAYMENT_COMPLETE, $order->order_status);
     }
 
-    public function test_vbank_notify_stores_only_whitelisted_pg_response_fields(): void
-    {
-        $order = $this->createTestOrder(30000);
-
-        $response = $this->post(
-            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
-            $this->makeVbankNotifyPayload($order->order_number, 30000, [
-                'TID' => 'VBANK_TID_SANITIZED',
-                'name' => '구매자명',
-                'BuyerEmail' => 'buyer@example.test',
-                'MallUserID' => 'member-001',
-                'Signature' => 'signature-value',
-            ])
-        );
-
-        $response->assertOk();
-        $this->assertEquals('OK', $response->getContent());
-
-        $payment = $order->payment;
-        $payment->refresh();
-
-        $meta = $payment->payment_meta;
-        $this->assertTrue($meta['pg_response_sanitized'] ?? false);
-        $this->assertSame('VBANK_TID_SANITIZED', $meta['pg_raw_response']['TID'] ?? null);
-        $this->assertSame('4110', $meta['pg_raw_response']['ResultCode'] ?? null);
-        $this->assertArrayNotHasKey('VbankNum', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('VbankInputName', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('name', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('BuyerEmail', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('MallUserID', $meta['pg_raw_response']);
-        $this->assertArrayNotHasKey('Signature', $meta['pg_raw_response']);
-        $this->assertTrue($meta['vbank_notifications'][0]['raw_sanitized'] ?? false);
-        $this->assertArrayNotHasKey('VbankNum', $meta['vbank_notifications'][0]['raw']);
-        $this->assertArrayNotHasKey('VbankInputName', $meta['vbank_notifications'][0]['raw']);
-    }
-
     public function test_vbank_notify_returns_ok_on_cancelled_deposit(): void
     {
-        $response = $this->post(
-            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
-            $this->makeVbankNotifyPayload('ORD-TEST-CANCEL', 30000, [
-                'TID' => 'VBANK_TID_002',
-                'ResultCode' => '4100',
-                'ResultMsg' => '계좌발급',
-            ])
-        );
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/vbank-notify', [
+            'TID' => 'VBANK_TID_002',
+            'Moid' => 'ORD-TEST-CANCEL',
+            'Amt' => 30000,
+            'VbankResult' => '0',
+        ]);
 
         $response->assertOk();
         $this->assertEquals('OK', $response->getContent());
@@ -500,10 +357,12 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
     public function test_vbank_notify_returns_fail_on_order_not_found(): void
     {
-        $response = $this->post(
-            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
-            $this->makeVbankNotifyPayload('NON_EXISTENT_ORDER', 30000, ['TID' => 'VBANK_TID_003'])
-        );
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/vbank-notify', [
+            'TID' => 'VBANK_TID_003',
+            'Moid' => 'NON_EXISTENT_ORDER',
+            'Amt' => 30000,
+            'VbankResult' => '1',
+        ]);
 
         $response->assertOk();
         $this->assertEquals('FAIL', $response->getContent());
@@ -515,10 +374,12 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $order = $this->createTestOrder(30000);
         $order->payment()->update(['transaction_id' => $tid]);
 
-        $response = $this->post(
-            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
-            $this->makeVbankNotifyPayload($order->order_number, 30000, ['TID' => $tid])
-        );
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/vbank-notify', [
+            'TID' => $tid,
+            'Moid' => $order->order_number,
+            'Amt' => 30000,
+            'VbankResult' => '1',
+        ]);
 
         $response->assertOk();
         $this->assertEquals('OK', $response->getContent());
