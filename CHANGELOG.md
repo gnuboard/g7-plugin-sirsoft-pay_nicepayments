@@ -4,8 +4,6 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
 
-## [Unreleased]
-
 ## [1.0.0-beta.3] - 2026-05-20
 
 ### Security
