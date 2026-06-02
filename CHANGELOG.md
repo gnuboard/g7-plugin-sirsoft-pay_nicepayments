@@ -4,9 +4,11 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
 
-## [Unreleased]
-
 ## [1.0.0-beta.3] - 2026-05-20
+
+### Changed
+
+- 환경설정 화면의 가상계좌 입금 통보 URL 표시 입력의 외형을 관리자 표준 외형으로 정렬 — 글자가 옅은 회색으로 표시되어 "참조용 잠긴 정보" 임을 한눈에 구분.
 
 ### Security
 
