@@ -4,11 +4,13 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 나이스페이먼츠 PC 결제창을 사용자가 닫거나 인증 단계 취소 콜백이 들어온 경우 임시 주문이 `pending_order` / `ready` 상태로 남지 않고 결제실패/취소 상태로 기록되도록 보강했습니다.
+
 ## [1.0.0-beta.3] - 2026-05-20
-
-### Changed
-
-- 환경설정 화면의 가상계좌 입금 통보 URL 표시 입력의 외형을 관리자 표준 외형으로 정렬 — 글자가 옅은 회색으로 표시되어 "참조용 잠긴 정보" 임을 한눈에 구분.
 
 ### Security
 

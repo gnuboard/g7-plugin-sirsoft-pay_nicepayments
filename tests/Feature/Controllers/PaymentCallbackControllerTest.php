@@ -300,6 +300,28 @@ class PaymentCallbackControllerTest extends PluginTestCase
         }
     }
 
+    public function test_auth_callback_records_pre_authorize_failure_when_amount_matches_order(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', [
+            'AuthResultCode' => '0021',
+            'AuthResultMsg' => '결제창을 종료하셨습니다',
+            'Moid' => $order->order_number,
+            'Amt' => 50000,
+        ]);
+
+        $response->assertRedirect('/shop/checkout');
+        $this->assertStringNotContainsString('error=', $response->headers->get('Location'));
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals('0021', $order->order_meta['payment_failure_code'] ?? null);
+        $this->assertEquals(PaymentStatusEnum::CANCELLED, $order->payment->payment_status);
+        $this->assertNotNull($order->payment->cancelled_at);
+    }
+
     public function test_auth_callback_redirects_to_fail_on_mid_mismatch(): void
     {
         $order = $this->createTestOrder(50000);
