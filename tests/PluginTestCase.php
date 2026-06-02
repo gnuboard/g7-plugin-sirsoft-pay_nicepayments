@@ -120,6 +120,15 @@ abstract class PluginTestCase extends TestCase
                 ->middleware('web')
                 ->group($webRoutesFile);
         }
+
+        $apiRoutesFile = base_path('plugins/sirsoft-pay_nicepayments/src/routes/api.php');
+
+        if (file_exists($apiRoutesFile)) {
+            \Illuminate\Support\Facades\Route::prefix('api/plugins/sirsoft-pay_nicepayments')
+                ->name('api.plugins.sirsoft-pay_nicepayments.')
+                ->middleware('api')
+                ->group($apiRoutesFile);
+        }
     }
 
     protected function createAdminUser(array $permissions = []): \App\Models\User

@@ -52,6 +52,7 @@ class AuthCallbackRequest extends FormRequest
                 'AuthResultCode' => ['required', 'string'],
                 'AuthResultMsg' => ['nullable', 'string'],
                 'Moid' => ['nullable', 'string'],
+                'Amt' => ['nullable', 'integer', 'min:1'],
             ];
         }
 

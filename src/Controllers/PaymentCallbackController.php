@@ -17,6 +17,7 @@ use Modules\Sirsoft\Ecommerce\Exceptions\PaymentAmountMismatchException;
 use Modules\Sirsoft\Ecommerce\Helpers\DeviceDetector;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\PreventsReplayCallback;
+use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
 use Plugins\Sirsoft\PayNicepayments\Concerns\SanitizesPgResponse;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\AuthCallbackRequest;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\VbankNotifyRequest;
@@ -33,6 +34,7 @@ use Plugins\Sirsoft\PayNicepayments\Support\UrlHelper;
 class PaymentCallbackController
 {
     use PreventsReplayCallback;
+    use RecordsPaymentWindowClosure;
     use SanitizesPgResponse;
 
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
@@ -162,6 +164,13 @@ class PaymentCallbackController
                 'auth_result_msg' => $authResultMsg,
                 'ip' => $request->ip(),
             ]);
+
+            $this->markAuthPhaseFailureIfOrderMatches(
+                $moid,
+                isset($validated['Amt']) ? (int) $validated['Amt'] : null,
+                $authResultCode,
+                $authResultMsg,
+            );
 
             return redirect($this->resolveFailUrl([]));
         }
@@ -567,6 +576,41 @@ class PaymentCallbackController
             ]);
 
             return response('FAIL', 200)->header('Content-Type', 'text/plain');
+        }
+    }
+
+    private function markAuthPhaseFailureIfOrderMatches(
+        string $moid,
+        ?int $amount,
+        string $failureCode,
+        string $failureMessage,
+    ): void {
+        if (trim($moid) === '' || $amount === null || $amount < 1) {
+            return;
+        }
+
+        try {
+            $order = $this->orderService->findByOrderNumber($moid);
+            if (! $order || $amount !== $this->expectedPaymentPrice($order)) {
+                return;
+            }
+
+            $message = trim($failureMessage) !== ''
+                ? $failureMessage
+                : '나이스페이먼츠 인증 단계가 완료되지 않았습니다.';
+
+            $this->markPaymentWindowClosed(
+                $this->orderService,
+                $order,
+                $failureCode !== '' ? $failureCode : 'USER_CANCEL',
+                $message,
+                $message,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('NicePayments: failed to record auth phase payment cancellation', [
+                'moid' => $moid,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

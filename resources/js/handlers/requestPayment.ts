@@ -1,9 +1,12 @@
+import { reportPaymentWindowClosed } from '../paymentCloseReport';
+
 interface G7ApiResponse {
     data?: unknown;
 }
 
 interface G7CoreApi {
     get: (url: string) => Promise<G7ApiResponse>;
+    post?: (url: string, data?: Record<string, unknown>) => Promise<G7ApiResponse>;
 }
 
 interface G7CoreToast {
@@ -50,6 +53,7 @@ interface ClientConfig {
     mid: string;
     sdk_url: string;
     sign_data_url: string;
+    close_report_url?: string;
     useEscrow?: boolean;
 }
 
@@ -360,6 +364,15 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
         const closePayment = (_resultCode: string, resultMsg: string) => {
             if (paymentClosed) return;
             paymentClosed = true;
+            const closeReason = [_resultCode, resultMsg].filter(Boolean).join(': ') || 'nicepay-window-closed';
+            void reportPaymentWindowClosed({
+                closeReportUrl: config.close_report_url,
+                oid: pgPaymentData.order_number,
+                price: Number(pgPaymentData.amount),
+                buyer_email: pgPaymentData.customer_email ?? '',
+                buyer_phone: pgPaymentData.customer_phone ?? '',
+                payment_method: paymentMethod,
+            }, closeReason);
             window.removeEventListener('popstate', handlePopState);
             // SDK가 body에 추가한 오버레이/iframe 등 제거
             Array.from(document.body.children).forEach(el => {
