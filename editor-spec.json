@@ -21,5 +21,42 @@
                 }
             }
         }
+    },
+    "states": {
+        "comment": "§17.5 — 플러그인 설정 변종.",
+        "groups": [
+            {
+                "comment": "§17.5 — 결제/인증 플러그인 설정. _local.form.is_test_mode 로 운영모드 경고(live_mode_warning)를 if 분기한다.",
+                "scope": {
+                    "kind": "route",
+                    "match": "*/admin/plugins/sirsoft-pay_nicepayments/settings"
+                },
+                "items": [
+                    {
+                        "id": "test_mode_on",
+                        "label": "$t:editor.state.test_mode_on",
+                        "default": true,
+                        "initialState": {
+                            "local": {
+                                "form": {
+                                    "is_test_mode": true
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "id": "test_mode_off",
+                        "label": "$t:editor.state.test_mode_off",
+                        "initialState": {
+                            "local": {
+                                "form": {
+                                    "is_test_mode": false
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
     }
 }
