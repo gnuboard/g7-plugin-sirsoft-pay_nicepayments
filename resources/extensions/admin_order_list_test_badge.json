@@ -89,7 +89,7 @@
                                                     { "type": "basic", "name": "Span", "props": { "className": "text-gray-500 dark:text-gray-400 font-normal ml-1" }, "text": "$t:defer:sirsoft-ecommerce.admin.order.product.more|count={{row.options_count - 1}}", "if": "{{row.options_count > 1}}" }
                                                 ]
                                             },
-                                            { "type": "basic", "name": "Div", "props": { "className": "text-xs text-gray-500 dark:text-gray-400" }, "text": "{{row.first_option?.product_option_name}}", "if": "{{row.first_option?.product_option_name}}" }
+                                            { "type": "basic", "name": "Div", "props": { "className": "text-tertiary" }, "text": "{{row.first_option?.product_option_name}}", "if": "{{row.first_option?.product_option_name}}" }
                                         ]
                                     }
                                 ]

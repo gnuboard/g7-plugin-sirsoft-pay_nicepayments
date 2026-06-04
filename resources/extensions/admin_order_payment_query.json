@@ -134,7 +134,7 @@
                                                 {
                                                     "type": "basic",
                                                     "name": "Span",
-                                                    "props": { "className": "text-xs text-gray-500 dark:text-gray-400" },
+                                                    "props": { "className": "text-tertiary" },
                                                     "text": "TID:"
                                                 },
                                                 {
@@ -400,7 +400,7 @@
                                                         {
                                                             "type": "basic",
                                                             "name": "Span",
-                                                            "props": { "className": "text-xs text-gray-500 dark:text-gray-400 block mb-0.5" },
+                                                            "props": { "className": "text-tertiary block mb-0.5" },
                                                             "text": "TID"
                                                         },
                                                         {
@@ -696,7 +696,7 @@
                             "type": "basic",
                             "name": "P",
                             "if": "{{!_local._vbankNotiData && !_local._vbankNotiLoading && !_local._vbankNotiError}}",
-                            "props": { "className": "text-xs text-gray-500 dark:text-gray-400 italic" },
+                            "props": { "className": "text-tertiary italic" },
                             "text": "$t:sirsoft-pay_nicepayments.admin.vbank_noti_not_loaded"
                         },
                         {
@@ -710,7 +710,7 @@
                             "type": "basic",
                             "name": "P",
                             "if": "{{_local._vbankNotiData && (_local._vbankNotiData.notifications ?? []).length === 0}}",
-                            "props": { "className": "text-xs text-gray-500 dark:text-gray-400 italic" },
+                            "props": { "className": "text-tertiary italic" },
                             "text": "$t:sirsoft-pay_nicepayments.admin.vbank_noti_empty"
                         },
                         {
