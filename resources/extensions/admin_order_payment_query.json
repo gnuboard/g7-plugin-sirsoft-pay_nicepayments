@@ -3,6 +3,7 @@
     "data_sources": [
         {
             "id": "nicepay_escrow",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.nicepay_escrow",
             "type": "api",
             "endpoint": "/api/plugins/sirsoft-pay_nicepayments/admin/orders/{{route.orderNumber}}/escrow-payments",
             "method": "GET",
@@ -11,6 +12,7 @@
         },
         {
             "id": "nicepay_status",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.nicepay_status",
             "type": "api",
             "endpoint": "/api/plugins/sirsoft-pay_nicepayments/admin/orders/{{route.orderNumber}}/transaction-status",
             "method": "GET",

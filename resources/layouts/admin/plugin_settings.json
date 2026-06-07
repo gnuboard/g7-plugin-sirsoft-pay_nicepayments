@@ -12,6 +12,7 @@
     "data_sources": [
         {
             "id": "settings",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.settings",
             "type": "api",
             "endpoint": "/api/admin/plugins/{{route.identifier}}/settings",
             "method": "GET",
@@ -22,6 +23,7 @@
         },
         {
             "id": "vbank_info",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.vbank_info",
             "type": "api",
             "endpoint": "/api/plugins/sirsoft-pay_nicepayments/admin/vbank-notify-url",
             "method": "GET",

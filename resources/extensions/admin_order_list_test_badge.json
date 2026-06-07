@@ -3,6 +3,7 @@
     "data_sources": [
         {
             "id": "nicepay_test_map",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.nicepay_test_map",
             "type": "api",
             "endpoint": "/api/plugins/sirsoft-pay_nicepayments/admin/orders/test-mode-map",
             "method": "GET",
