@@ -1039,7 +1039,7 @@
                                 "type": "basic",
                                 "name": "Button",
                                 "props": {
-                                    "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors"
+                                    "className": "btn btn-secondary"
                                 },
                                 "actions": [
                                     {
@@ -1064,7 +1064,7 @@
                                 "name": "Button",
                                 "props": {
                                     "disabled": "{{!_local.hasChanges || _local.isSaving}}",
-                                    "className": "flex items-center gap-1.5 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    "className": "btn btn-primary flex-center gap-1.5"
                                 },
                                 "actions": [
                                     {
