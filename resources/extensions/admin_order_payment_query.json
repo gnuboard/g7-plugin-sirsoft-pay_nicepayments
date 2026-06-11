@@ -29,7 +29,7 @@
                     "type": "basic",
                     "name": "Div",
                     "if": "{{nicepay_status.data?._is_test_mode === true}}",
-                    "props": { "className": "mx-6 mb-3 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg flex items-center gap-2" },
+                    "props": { "className": "mx-6 mb-3 px-3 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg flex-center gap-2" },
                     "children": [
                         {
                             "type": "basic",
@@ -60,7 +60,7 @@
                     "type": "basic",
                     "name": "Div",
                     "if": "{{(nicepay_escrow.data?.escrow_payments ?? []).length > 0}}",
-                    "props": { "className": "flex items-center gap-2 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg" },
+                    "props": { "className": "flex-center gap-2 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg" },
                     "children": [
                         {
                             "type": "basic",
@@ -95,7 +95,7 @@
                             "id": "nicepay_escrow_header",
                             "type": "basic",
                             "name": "Div",
-                            "props": { "className": "flex items-center gap-2 mb-4" },
+                            "props": { "className": "flex-center gap-2 mb-4" },
                             "children": [
                                 {
                                     "type": "basic",
@@ -129,7 +129,7 @@
                                         {
                                             "type": "basic",
                                             "name": "Div",
-                                            "props": { "className": "flex items-center gap-2" },
+                                            "props": { "className": "flex-center gap-2" },
                                             "children": [
                                                 {
                                                     "type": "basic",
@@ -350,7 +350,7 @@
                             "id": "nicepay_verify_header",
                             "type": "basic",
                             "name": "Div",
-                            "props": { "className": "flex items-center gap-2 mb-4" },
+                            "props": { "className": "flex-center gap-2 mb-4" },
                             "children": [
                                 {
                                     "type": "basic",
@@ -623,7 +623,7 @@
                         {
                             "type": "basic",
                             "name": "Div",
-                            "props": { "className": "flex items-center gap-2 mb-4" },
+                            "props": { "className": "flex-center gap-2 mb-4" },
                             "children": [
                                 { "type": "basic", "name": "Div", "props": { "className": "w-1.5 h-4 bg-emerald-500 rounded-full flex-shrink-0" } },
                                 {
@@ -771,7 +771,7 @@
                                                 {
                                                     "type": "basic",
                                                     "name": "Div",
-                                                    "props": { "className": "flex items-center gap-2 py-1 border-b border-gray-100 dark:border-gray-800 last:border-0" },
+                                                    "props": { "className": "flex-center gap-2 py-1 border-b border-gray-100 dark:border-gray-800 last:border-0" },
                                                     "children": [
                                                         {
                                                             "type": "basic", "name": "Span",

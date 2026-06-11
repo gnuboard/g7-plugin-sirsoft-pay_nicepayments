@@ -150,7 +150,7 @@
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center gap-2 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg px-1 py-0.5 transition-colors" },
+                                        "props": { "className": "flex-center gap-2 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg px-1 py-0.5 transition-colors" },
                                         "children": [
                                             { "type": "basic", "name": "Icon", "if": "{{!!row.user?.uuid}}", "props": { "name": "fa-regular fa-user", "className": "text-gray-400 dark:text-gray-500 flex-shrink-0" } },
                                             {
@@ -241,7 +241,7 @@
                             {
                                 "type": "basic",
                                 "name": "Div",
-                                "props": { "className": "flex items-center gap-2" },
+                                "props": { "className": "flex-center gap-2" },
                                 "children": [
                                     { "type": "basic", "name": "Span", "props": { "className": "fi fi-{{row.address?.recipient_country_code?.toLowerCase()}} flex-shrink-0" }, "if": "{{row.address?.recipient_country_code}}" },
                                     { "type": "basic", "name": "Span", "text": "{{$localized(row.address?.recipient_country_name) ?? row.address?.recipient_country_code}}", "if": "{{row.address?.recipient_country_code}}" }
