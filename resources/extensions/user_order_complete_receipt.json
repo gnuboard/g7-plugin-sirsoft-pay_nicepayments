@@ -16,7 +16,7 @@
                             "type": "basic",
                             "name": "Div",
                             "if": "{{(['NAVERPAY','KAKAOPAY','SAMSUNGPAY','APPLEPAY','PAYCO','SKPAY','SSGPAY','LPAY']).includes(orderData?.data?.payment?.payment_meta?.PayMethod)}}",
-                            "props": { "className": "flex items-center justify-between mb-2" },
+                            "props": { "className": "flex-between mb-2" },
                             "children": [
                                 {
                                     "type": "basic",
@@ -36,7 +36,7 @@
                             "comment": "영수증 링크 행",
                             "type": "basic",
                             "name": "Div",
-                            "props": { "className": "flex items-center justify-between" },
+                            "props": { "className": "flex-between" },
                             "children": [
                                 {
                                     "type": "basic",
