@@ -320,7 +320,7 @@
                                                             "type": "basic",
                                                             "name": "Icon",
                                                             "if": "{{_local._escrowSubmitting}}",
-                                                            "props": { "name": "spinner", "className": "w-4 h-4 animate-spin" }
+                                                            "props": { "name": "spinner", "className": "spinner-sm" }
                                                         },
                                                         {
                                                             "type": "basic",

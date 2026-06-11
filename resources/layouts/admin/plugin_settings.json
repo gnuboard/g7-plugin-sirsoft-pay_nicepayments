@@ -1138,7 +1138,7 @@
                                         "if": "{{_local.isSaving}}",
                                         "props": {
                                             "name": "spinner",
-                                            "className": "w-4 h-4 animate-spin"
+                                            "className": "spinner-sm"
                                         }
                                     },
                                     {
