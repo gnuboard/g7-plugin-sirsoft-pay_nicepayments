@@ -106,7 +106,7 @@
                             {
                                 "type": "basic",
                                 "name": "Div",
-                                "props": { "className": "stack" },
+                                "props": { "className": "row-stack" },
                                 "children": [
                                     { "type": "basic", "name": "Span", "props": { "className": "font-medium" }, "text": "{{row.total_amount_formatted}}" },
                                     { "type": "basic", "name": "Span", "props": { "className": "text-xs text-gray-400 dark:text-gray-500" }, "text": "$t:defer:sirsoft-ecommerce.admin.order.column.shipping_fee_short|amount={{row.total_shipping_amount_formatted}}", "if": "{{row.total_shipping_amount > 0}}" },
@@ -203,7 +203,7 @@
                             {
                                 "type": "basic",
                                 "name": "Div",
-                                "props": { "className": "stack" },
+                                "props": { "className": "row-stack" },
                                 "children": [
                                     {
                                         "type": "basic",
