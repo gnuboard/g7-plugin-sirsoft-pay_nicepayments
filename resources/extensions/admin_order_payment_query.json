@@ -71,7 +71,7 @@
                         {
                             "type": "basic",
                             "name": "Span",
-                            "props": { "className": "text-sm text-emerald-800 dark:text-emerald-300" },
+                            "props": { "className": "text-success-soft" },
                             "text": "$t:sirsoft-pay_nicepayments.admin.escrow_payment_notice"
                         }
                     ]
@@ -495,7 +495,7 @@
                                             "type": "basic",
                                             "name": "Div",
                                             "if": "{{(_local._nicepayActiveTid === payment.transaction_id && _local._nicepayResult) || nicepay_status.data}}",
-                                            "props": { "className": "mt-3 pt-3 border-t border-gray-200 dark:border-gray-700" },
+                                            "props": { "className": "mt-3 pt-3" },
                                             "children": [
                                                 {
                                                     "type": "basic",
