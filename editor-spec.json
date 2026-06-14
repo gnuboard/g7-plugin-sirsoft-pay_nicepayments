@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$comment": "레이아웃 편집기 스펙 — 나이스페이먼츠 결제 플러그인 도메인 sampleData (#383 S6-2 후속 / §3.3 / §17.5.A.4 #1). plugin_settings 의 플러그인 고유 ID(vbank_info) 응답 shape 를 실제 바인딩(vbank_info.data.{notify_url,guide_steps,...}) 역추론. 공통 ID 'settings' 는 admin 템플릿 sampleData 가 커버(§9.3.3 전역 고유 ID 병합)하므로 미포함.",
+    "$comment": "레이아웃 편집기 스펙 — 나이스페이먼츠 결제 플러그인 도메인 sampleData. plugin_settings 의 플러그인 고유 ID(vbank_info) 응답 shape 를 실제 바인딩(vbank_info.data.{notify_url,guide_steps,...}) 역추론. 공통 ID 'settings' 는 admin 템플릿 sampleData 가 커버(전역 고유 ID 병합)하므로 미포함.",
     "pluginId": "sirsoft-pay_nicepayments",
     "version": "1.0.0",
     "description": "나이스페이먼츠 결제 플러그인 레이아웃 편집기 샘플 데이터 (가상계좌 입금통보 URL).",
@@ -23,10 +23,10 @@
         }
     },
     "states": {
-        "comment": "§17.5 — 플러그인 설정 변종.",
+        "comment": "플러그인 설정 변종.",
         "groups": [
             {
-                "comment": "§17.5 — 결제/인증 플러그인 설정. _local.form.is_test_mode 로 운영모드 경고(live_mode_warning)를 if 분기한다.",
+                "comment": "결제/인증 플러그인 설정. _local.form.is_test_mode 로 운영모드 경고(live_mode_warning)를 if 분기한다.",
                 "scope": {
                     "kind": "route",
                     "match": "*/admin/plugins/sirsoft-pay_nicepayments/settings"
