@@ -60,7 +60,7 @@
                     "type": "basic",
                     "name": "Div",
                     "if": "{{(nicepay_escrow.data?.escrow_payments ?? []).length > 0}}",
-                    "props": { "className": "alert-success flex-center gap-2 px-4 py-3" },
+                    "props": { "className": "alert-success px-4" },
                     "children": [
                         {
                             "type": "basic",
