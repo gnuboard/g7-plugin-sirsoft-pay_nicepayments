@@ -1,4 +1,14 @@
 {
+    "editor": {
+        "data_source": {
+            "nicepay_easy_pay_config": "간편결제 설정",
+            "nicepay_escrow": "에스크로",
+            "nicepay_status": "결제 상태",
+            "nicepay_test_map": "테스트 결제 맵",
+            "settings": "결제 설정",
+            "vbank_info": "가상계좌 정보"
+        }
+    },
     "settings": {
         "title": "나이스페이먼츠 설정",
         "description": "나이스페이먼츠 PG 연동 설정",

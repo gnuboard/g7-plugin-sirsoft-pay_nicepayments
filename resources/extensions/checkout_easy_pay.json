@@ -3,6 +3,7 @@
     "data_sources": [
         {
             "id": "nicepay_easy_pay_config",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.nicepay_easy_pay_config",
             "type": "api",
             "endpoint": "/api/modules/sirsoft-ecommerce/payments/client-config/nicepayments",
             "method": "GET",
