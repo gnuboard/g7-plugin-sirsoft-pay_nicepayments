@@ -210,7 +210,7 @@
                                                 "type": "basic",
                                                 "name": "H3",
                                                 "props": {
-                                                    "className": "text-sm font-semiboldtext-warning-soft"
+                                                    "className": "text-sm font-semibold text-warning-soft"
                                                 },
                                                 "text": "$t:sirsoft-pay_nicepayments.settings.live_mode_warning_title"
                                             },

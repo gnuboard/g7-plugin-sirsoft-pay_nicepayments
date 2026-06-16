@@ -25,7 +25,7 @@
                   "type": "basic",
                   "name": "H3",
                   "props": {
-                    "className": "text-sm font-semiboldtext-info-soft mb-3"
+                    "className": "text-sm font-semibold text-info-soft mb-3"
                   },
                   "text": "$t:sirsoft-pay_nicepayments.user.vbank_deposit_info"
                 },
