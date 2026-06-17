@@ -410,11 +410,14 @@ class PaymentCallbackController
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.order_not_found')], 422);
         }
 
-        if ((int) $order->total_amount !== $amt) {
+        // 결제 청구액 SSoT = total_due_amount (마일리지/예치금 차감 후 실청구액).
+        // 클라이언트 SignData 요청액(amt = pg_payment_data.amount = total_due_amount)·코어 최종 승인
+        // 검증과 동일 기준으로 통일한다.
+        if ((int) $order->total_due_amount !== $amt) {
             Log::warning('NicePayments: SignData amount mismatch', [
                 'moid' => $moid,
                 'requested_amt' => $amt,
-                'actual_amt' => $order->total_amount,
+                'actual_amt' => $order->total_due_amount,
                 'ip' => $request->ip(),
             ]);
 
