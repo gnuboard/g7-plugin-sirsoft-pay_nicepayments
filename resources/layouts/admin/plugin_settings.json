@@ -38,7 +38,6 @@
                 "id": "plugin_settings_content",
                 "type": "basic",
                 "name": "Div",
-                "blur_until_loaded": "{{_local.isSaving}}",
                 "dataKey": "form",
                 "trackChanges": true,
                 "props": {
