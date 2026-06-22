@@ -4,8 +4,10 @@ namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
 use Mockery;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
+use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderAddress;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Tests\PluginTestCase;
 
@@ -127,9 +129,37 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             ->assertJsonPath('data.reason', 'order_not_payable');
     }
 
+    public function test_close_report_ignores_order_when_payment_already_paid(): void
+    {
+        // race 재현: 승인 콜백이 payment 를 먼저 PAID 로 갱신했으나 order_status 는 아직 PENDING_ORDER.
+        $order = $this->makeOrder('ORD-NICE-CLOSE-PAID-001', 10000);
+        $order->setRelation('payment', new OrderPayment([
+            'payment_status' => PaymentStatusEnum::PAID,
+        ]));
+
+        $orderService = Mockery::mock(OrderProcessingService::class);
+        $orderService->shouldReceive('findByOrderNumber')
+            ->once()
+            ->with('ORD-NICE-CLOSE-PAID-001')
+            ->andReturn($order);
+        $orderService->shouldNotReceive('failPayment');
+        $orderService->shouldNotReceive('recordPaymentCancellation');
+
+        $this->app->instance(OrderProcessingService::class, $orderService);
+
+        $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
+            'oid' => 'ORD-NICE-CLOSE-PAID-001',
+            'price' => 10000,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'ignored')
+            ->assertJsonPath('data.reason', 'payment_already_paid');
+    }
+
     private function makeOrder(string $orderNumber, int $amount): Order
     {
-        $order = new Order();
+        $order = new Order;
         $order->order_number = $orderNumber;
         $order->order_status = OrderStatusEnum::PENDING_ORDER;
         $order->currency = 'KRW';
