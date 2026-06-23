@@ -141,6 +141,102 @@ class PaymentCallbackControllerTest extends PluginTestCase
         ], $overrides);
     }
 
+    // ===== SignData 생성 테스트 =====
+
+    public function test_sign_data_allows_guest_pending_nicepayments_order(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'ediDate',
+                'signData',
+                'mid',
+            ])
+            ->assertJsonPath('mid', self::TEST_MID);
+
+        $this->assertSame(64, strlen((string) $response->json('signData')));
+    }
+
+    public function test_sign_data_rejects_amount_mismatch(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 49999,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_amount'));
+    }
+
+    public function test_sign_data_rejects_non_payable_order(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update(['order_status' => OrderStatusEnum::CANCELLED]);
+        $order->payment()->update(['payment_status' => PaymentStatusEnum::FAILED]);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+    }
+
+    public function test_sign_data_rejects_non_nicepayments_payment_record(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->payment()->update(['pg_provider' => 'kginicis']);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+    }
+
+    public function test_sign_data_rejects_missing_payment_record(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->payment()->delete();
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+    }
+
+    public function test_sign_data_rejects_unknown_order(): void
+    {
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => 'ORD-NOT-FOUND',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.order_not_found'));
+    }
+
     // ===== 성공 콜백 테스트 =====
 
     public function test_auth_callback_redirects_to_complete_page_on_valid_payment(): void
@@ -318,8 +414,8 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $order->refresh();
         $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
         $this->assertEquals('0021', $order->order_meta['payment_failure_code'] ?? null);
-        $this->assertEquals(PaymentStatusEnum::CANCELLED, $order->payment->payment_status);
-        $this->assertNotNull($order->payment->cancelled_at);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $order->payment->payment_status);
+        $this->assertNull($order->payment->cancelled_at);
     }
 
     public function test_auth_callback_redirects_to_fail_on_mid_mismatch(): void
@@ -449,6 +545,34 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $payment = $order->payment;
         $payment->refresh();
         $this->assertEquals('mobile', $payment->payment_device);
+    }
+
+    public function test_auth_callback_ignores_non_payable_order_without_authorize_request(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update(['order_status' => OrderStatusEnum::CANCELLED]);
+        $order->payment()->update(['payment_status' => PaymentStatusEnum::FAILED]);
+        $this->mockPluginSettings();
+
+        $params = $this->makeCallbackParams($order->order_number, 50000);
+
+        Http::fake([
+            '*' => Http::response(
+                $this->makeAuthorizeResponse('TID_SHOULD_NOT_BE_SENT', $order->order_number, 50000),
+                200
+            ),
+        ]);
+
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+
+        $response->assertRedirect();
+        $this->assertStringContainsString('error=order_not_payable', $response->headers->get('Location'));
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $order->payment->payment_status);
+        $this->assertNull($order->payment->transaction_id);
+        Http::assertNothingSent();
     }
 
     // ===== 가상계좌 입금 통보 테스트 =====

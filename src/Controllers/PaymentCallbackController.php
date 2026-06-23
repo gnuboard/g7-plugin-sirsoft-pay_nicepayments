@@ -229,6 +229,16 @@ class PaymentCallbackController
                 return redirect($this->resolveFailUrl(['error' => 'order_not_found', 'orderId' => $moid]));
             }
 
+            if (! $order->order_status->isBeforePayment()) {
+                Log::warning('NicePayments: callback ignored for non-payable order', [
+                    'moid' => $moid,
+                    'order_status' => $order->order_status->value,
+                    'payment_status' => $order->payment?->payment_status?->value,
+                ]);
+
+                return redirect($this->resolveFailUrl(['error' => 'order_not_payable', 'orderId' => $moid]));
+            }
+
             HookManager::doAction('sirsoft-pay_nicepayments.payment.before_authorize', $order, $validated);
 
             // 4단계: 서버 승인 API 호출
@@ -245,7 +255,9 @@ class PaymentCallbackController
                     'result_msg' => $pgResponse['ResultMsg'] ?? '',
                 ]);
 
-                $this->orderService->failPayment($order, $resultCode, $pgResponse['ResultMsg'] ?? '');
+                $failureMessage = $pgResponse['ResultMsg'] ?? '';
+                $failedOrder = $this->orderService->failPayment($order, $resultCode, $failureMessage);
+                $this->markNicePaymentFailed($failedOrder, $resultCode, $failureMessage);
 
                 // authorize 실패 — NextAppURL 호출이 거부됐어도 PG 측에 잔존 승인이 있을
                 // 수 있어 net cancel 호출. NicePay 가 미승인 상태이면 net cancel API 가
@@ -357,6 +369,11 @@ class PaymentCallbackController
 
             $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
 
+            if (isset($order)) {
+                $failedOrder = $this->orderService->failPayment($order, 'AMOUNT_MISMATCH', $e->getMessage());
+                $this->markNicePaymentFailed($failedOrder, 'AMOUNT_MISMATCH', $e->getMessage());
+            }
+
             return redirect($this->resolveFailUrl(['error' => 'amount_mismatch', 'orderId' => $moid]));
 
         } catch (\Exception $e) {
@@ -383,8 +400,9 @@ class PaymentCallbackController
      * 결제 요청 SignData 생성
      *
      * 클라이언트가 결제창 호출 직전에 EdiDate + SignData 를 발급받기 위해 호출.
-     * MOID 와 Amt 를 우리 DB 의 주문 금액과 비교 검증하여 클라이언트 측 금액 조작을
-     * 차단한다 (인증 필수 + auth:sanctum,web 미들웨어).
+     * 비회원 결제도 호출하므로 라우트 인증에는 의존하지 않는다.
+     * MOID, 주문 상태, 나이스페이 결제 레코드, Amt 를 우리 DB 와 비교 검증하여
+     * 클라이언트 측 주문/금액 조작을 차단한다.
      *
      * @param  Request  $request  amt + moid
      * @return JsonResponse ediDate / signData / mid 또는 400/422
@@ -408,6 +426,25 @@ class PaymentCallbackController
             ]);
 
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.order_not_found')], 422);
+        }
+
+        $payment = $order->payment()->first();
+
+        if (
+            ! $order->order_status->isBeforePayment()
+            || ! $payment
+            || $payment->pg_provider !== 'nicepayments'
+            || $payment->payment_status !== PaymentStatusEnum::READY
+        ) {
+            Log::warning('NicePayments: SignData rejected for non-payable order', [
+                'moid' => $moid,
+                'order_status' => $order->order_status->value,
+                'payment_status' => $payment?->payment_status?->value,
+                'pg_provider' => $payment?->pg_provider,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 422);
         }
 
         // 결제 청구액 SSoT = total_due_amount (마일리지/예치금 차감 후 실청구액).
