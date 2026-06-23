@@ -194,6 +194,84 @@ class PaymentCallbackControllerTest extends PluginTestCase
             ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
     }
 
+    public function test_sign_data_restores_retryable_failed_nicepayments_order(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update([
+            'order_status' => OrderStatusEnum::CANCELLED,
+            'order_meta' => [
+                'payment_failure_code' => 'USER_CANCEL',
+                'payment_failure_message' => '사용자가 결제창을 닫았습니다.',
+                'payment_failed_at' => now()->toIso8601String(),
+            ],
+        ]);
+        $order->payment()->update([
+            'payment_status' => PaymentStatusEnum::FAILED,
+            'payment_meta' => [
+                'failure_source' => 'nicepayments',
+                'failure_code' => 'USER_CANCEL',
+                'failure_message' => '사용자가 결제창을 닫았습니다.',
+                'failed_at' => now()->toIso8601String(),
+            ],
+        ]);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonStructure(['ediDate', 'signData', 'mid']);
+
+        $order->refresh();
+        $payment = $order->payment->fresh();
+
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::READY, $payment->payment_status);
+        $this->assertArrayNotHasKey('payment_failure_code', $order->order_meta);
+        $this->assertEquals(1, $order->order_meta['nicepayments_retry_count'] ?? null);
+        $this->assertArrayNotHasKey('failure_code', $payment->payment_meta);
+        $this->assertEquals(1, $payment->payment_meta['retry_count'] ?? null);
+    }
+
+    public function test_sign_data_does_not_restore_amount_mismatch_failure(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update([
+            'order_status' => OrderStatusEnum::CANCELLED,
+            'order_meta' => [
+                'payment_failure_code' => 'AMOUNT_MISMATCH',
+                'payment_failure_message' => 'amount mismatch',
+                'payment_failed_at' => now()->toIso8601String(),
+            ],
+        ]);
+        $order->payment()->update([
+            'payment_status' => PaymentStatusEnum::FAILED,
+            'payment_meta' => [
+                'failure_source' => 'nicepayments',
+                'failure_code' => 'AMOUNT_MISMATCH',
+                'failure_message' => 'amount mismatch',
+                'failed_at' => now()->toIso8601String(),
+            ],
+        ]);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+
+        $order->refresh();
+        $payment = $order->payment->fresh();
+
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
+    }
+
     public function test_sign_data_rejects_non_nicepayments_payment_record(): void
     {
         $order = $this->createTestOrder(50000);
@@ -486,6 +564,37 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
         $response->assertRedirect();
         $this->assertStringContainsString('error=authorize_failed', $response->headers->get('Location'));
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $order->payment->payment_status);
+        $this->assertEquals('9999', $order->payment->payment_meta['failure_code'] ?? null);
+    }
+
+    public function test_auth_callback_records_authorize_exception_as_failed_payment(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $params = $this->makeCallbackParams($order->order_number, 50000);
+
+        Http::fake([
+            'pay.nicepay.co.kr/v1/authorize' => Http::response([], 500),
+            'pay.nicepay.co.kr/v1/netcancel' => Http::response('OK', 200),
+        ]);
+
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+
+        $response->assertRedirect();
+        $this->assertStringContainsString('error=authorize_failed', $response->headers->get('Location'));
+
+        $order->refresh();
+        $payment = $order->payment->fresh();
+
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals('AUTHORIZE_EXCEPTION', $order->order_meta['payment_failure_code'] ?? null);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
+        $this->assertEquals('AUTHORIZE_EXCEPTION', $payment->payment_meta['failure_code'] ?? null);
     }
 
     public function test_auth_callback_redirects_to_fail_url_on_missing_params(): void
