@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Plugins\Sirsoft\PayNicepayments\Concerns;
 
 use Illuminate\Http\Request;
+use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderAddress;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
@@ -56,11 +57,27 @@ trait RecordsPaymentWindowClosure
 
         $failedOrder = $orderService->failPayment($order, $failureCode, $failureMessage);
 
-        return $orderService->recordPaymentCancellation(
-            $failedOrder,
-            $failureCode,
-            $cancelMessage ?: $failureMessage,
-        );
+        return $this->markNicePaymentFailed($failedOrder, $failureCode, $failureMessage);
+    }
+
+    protected function markNicePaymentFailed(Order $order, string $failureCode, string $failureMessage): Order
+    {
+        $payment = $order->payment()->first();
+        if (! $payment) {
+            return $order;
+        }
+
+        $payment->update([
+            'payment_status' => PaymentStatusEnum::FAILED->value,
+            'payment_meta' => array_merge($payment->payment_meta ?? [], [
+                'failure_code' => $failureCode,
+                'failure_message' => $failureMessage,
+                'failed_at' => now()->toIso8601String(),
+                'failure_source' => 'nicepayments',
+            ]),
+        ]);
+
+        return $order->fresh();
     }
 
     protected function digitsOnly(string $value): string
