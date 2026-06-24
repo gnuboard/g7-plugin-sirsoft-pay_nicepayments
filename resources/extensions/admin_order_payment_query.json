@@ -60,7 +60,7 @@
                     "type": "basic",
                     "name": "Div",
                     "if": "{{(nicepay_escrow.data?.escrow_payments ?? []).length > 0}}",
-                    "props": { "className": "alert-success" },
+                    "props": { "className": "alert-success px-4" },
                     "children": [
                         {
                             "type": "basic",
@@ -88,7 +88,7 @@
                     "name": "Div",
                     "if": "{{(nicepay_escrow.data?.escrow_payments ?? []).length > 0}}",
                     "props": {
-                        "className": "admin-card"
+                        "className": "card"
                     },
                     "children": [
                         {
@@ -343,7 +343,7 @@
                     "name": "Div",
                     "if": "{{(order.data?.payments?.filter(p => p.transaction_id && p.pg_provider === 'nicepayments') ?? []).length > 0}}",
                     "props": {
-                        "className": "admin-card"
+                        "className": "card"
                     },
                     "children": [
                         {
@@ -618,7 +618,7 @@
                     "type": "basic",
                     "name": "Div",
                     "if": "{{(order.data?.payments?.filter(p => p.payment_method === 'vbank' && p.pg_provider === 'nicepayments') ?? []).length > 0}}",
-                    "props": { "className": "admin-card mt-4" },
+                    "props": { "className": "card mt-4" },
                     "children": [
                         {
                             "type": "basic",
