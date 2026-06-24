@@ -38,7 +38,6 @@
                 "id": "plugin_settings_content",
                 "type": "basic",
                 "name": "Div",
-                "blur_until_loaded": "{{_local.isSaving}}",
                 "dataKey": "form",
                 "trackChanges": true,
                 "props": {
@@ -62,7 +61,7 @@
                         "name": "Div",
                         "if": "{{_local.errors}}",
                         "props": {
-                            "className": "alert-danger p-4 mt-6"
+                            "className": "alert-danger"
                         },
                         "children": [
                             {
