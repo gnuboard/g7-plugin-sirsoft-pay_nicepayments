@@ -1,4 +1,14 @@
 {
+    "editor": {
+        "data_source": {
+            "nicepay_easy_pay_config": "Easy Pay Config",
+            "nicepay_escrow": "Escrow",
+            "nicepay_status": "Payment Status",
+            "nicepay_test_map": "Test Payment Map",
+            "settings": "Payment Settings",
+            "vbank_info": "Virtual Account Info"
+        }
+    },
     "settings": {
         "title": "NicePayments Settings",
         "description": "NicePayments PG integration settings",

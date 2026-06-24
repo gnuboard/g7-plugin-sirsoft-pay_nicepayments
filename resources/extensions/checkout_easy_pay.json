@@ -3,6 +3,7 @@
     "data_sources": [
         {
             "id": "nicepay_easy_pay_config",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.nicepay_easy_pay_config",
             "type": "api",
             "endpoint": "/api/modules/sirsoft-ecommerce/payments/client-config/nicepayments",
             "method": "GET",
@@ -19,20 +20,28 @@
                     "type": "basic",
                     "name": "Div",
                     "if": "{{(nicepay_easy_pay_config.data?.enabled_easy_pays ?? []).length > 0}}",
-                    "props": { "className": "mt-4 pt-4 border-t border-gray-200 dark:border-gray-700" },
+                    "props": {
+                        "className": "mt-4 pt-4"
+                    },
                     "responsive": {
                         "portable": {
-                            "props": { "className": "mt-3 pt-3 border-t border-gray-200 dark:border-gray-700" }
+                            "props": {
+                                "className": "mt-3 pt-3"
+                            }
                         }
                     },
                     "children": [
                         {
                             "type": "basic",
                             "name": "P",
-                            "props": { "className": "text-sm font-medium text-gray-700 dark:text-gray-300 mb-3" },
+                            "props": {
+                                "className": "text-body font-medium mb-3"
+                            },
                             "responsive": {
                                 "portable": {
-                                    "props": { "className": "text-sm font-medium text-gray-700 dark:text-gray-300 mb-2" }
+                                    "props": {
+                                        "className": "text-body font-medium mb-2"
+                                    }
                                 }
                             },
                             "text": "$t:sirsoft-pay_nicepayments.easy_pay.section_title"
@@ -40,7 +49,9 @@
                         {
                             "type": "basic",
                             "name": "Div",
-                            "props": { "className": "nicepay-easy-pay-btns flex flex-wrap gap-2" },
+                            "props": {
+                                "className": "nicepay-easy-pay-btns flex flex-wrap gap-2"
+                            },
                             "children": [
                                 {
                                     "comment": "네이버페이",
@@ -56,7 +67,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_naverpay" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_naverpay"
+                                            }
                                         }
                                     ]
                                 },
@@ -74,7 +87,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_kakaopay" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_kakaopay"
+                                            }
                                         }
                                     ]
                                 },
@@ -92,7 +107,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_samsungpay" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_samsungpay"
+                                            }
                                         }
                                     ]
                                 },
@@ -110,7 +127,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_applepay" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_applepay"
+                                            }
                                         }
                                     ]
                                 },
@@ -128,7 +147,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_payco" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_payco"
+                                            }
                                         }
                                     ]
                                 },
@@ -146,7 +167,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_skpay" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_skpay"
+                                            }
                                         }
                                     ]
                                 },
@@ -164,7 +187,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_ssgpay" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_ssgpay"
+                                            }
                                         }
                                     ]
                                 },
@@ -182,7 +207,9 @@
                                         {
                                             "type": "click",
                                             "handler": "sirsoft-pay_nicepayments.setPaymentMethod",
-                                            "params": { "paymentMethod": "nicepay_lpay" }
+                                            "params": {
+                                                "paymentMethod": "nicepay_lpay"
+                                            }
                                         }
                                     ]
                                 }

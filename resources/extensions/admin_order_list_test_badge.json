@@ -3,6 +3,7 @@
     "data_sources": [
         {
             "id": "nicepay_test_map",
+            "label_key": "$t:sirsoft-pay_nicepayments.editor.data_source.nicepay_test_map",
             "type": "api",
             "endpoint": "/api/plugins/sirsoft-pay_nicepayments/admin/orders/test-mode-map",
             "method": "GET",
@@ -88,7 +89,7 @@
                                                     { "type": "basic", "name": "Span", "props": { "className": "text-gray-500 dark:text-gray-400 font-normal ml-1" }, "text": "$t:defer:sirsoft-ecommerce.admin.order.product.more|count={{row.options_count - 1}}", "if": "{{row.options_count > 1}}" }
                                                 ]
                                             },
-                                            { "type": "basic", "name": "Div", "props": { "className": "text-xs text-gray-500 dark:text-gray-400" }, "text": "{{row.first_option?.product_option_name}}", "if": "{{row.first_option?.product_option_name}}" }
+                                            { "type": "basic", "name": "Div", "props": { "className": "text-tertiary" }, "text": "{{row.first_option?.product_option_name}}", "if": "{{row.first_option?.product_option_name}}" }
                                         ]
                                     }
                                 ]
@@ -105,7 +106,7 @@
                             {
                                 "type": "basic",
                                 "name": "Div",
-                                "props": { "className": "flex flex-col gap-0.5" },
+                                "props": { "className": "row-stack" },
                                 "children": [
                                     { "type": "basic", "name": "Span", "props": { "className": "font-medium" }, "text": "{{row.total_amount_formatted}}" },
                                     { "type": "basic", "name": "Span", "props": { "className": "text-xs text-gray-400 dark:text-gray-500" }, "text": "$t:defer:sirsoft-ecommerce.admin.order.column.shipping_fee_short|amount={{row.total_shipping_amount_formatted}}", "if": "{{row.total_shipping_amount > 0}}" },
@@ -149,7 +150,7 @@
                                     {
                                         "type": "basic",
                                         "name": "Div",
-                                        "props": { "className": "flex items-center gap-2 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg px-1 py-0.5 transition-colors" },
+                                        "props": { "className": "flex-center gap-2 hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg px-1 py-0.5 transition-colors" },
                                         "children": [
                                             { "type": "basic", "name": "Icon", "if": "{{!!row.user?.uuid}}", "props": { "name": "fa-regular fa-user", "className": "text-gray-400 dark:text-gray-500 flex-shrink-0" } },
                                             {
@@ -202,7 +203,7 @@
                             {
                                 "type": "basic",
                                 "name": "Div",
-                                "props": { "className": "flex flex-col gap-0" },
+                                "props": { "className": "row-stack" },
                                 "children": [
                                     {
                                         "type": "basic",
@@ -240,7 +241,7 @@
                             {
                                 "type": "basic",
                                 "name": "Div",
-                                "props": { "className": "flex items-center gap-2" },
+                                "props": { "className": "flex-center gap-2" },
                                 "children": [
                                     { "type": "basic", "name": "Span", "props": { "className": "fi fi-{{row.address?.recipient_country_code?.toLowerCase()}} flex-shrink-0" }, "if": "{{row.address?.recipient_country_code}}" },
                                     { "type": "basic", "name": "Span", "text": "{{$localized(row.address?.recipient_country_name) ?? row.address?.recipient_country_code}}", "if": "{{row.address?.recipient_country_code}}" }
