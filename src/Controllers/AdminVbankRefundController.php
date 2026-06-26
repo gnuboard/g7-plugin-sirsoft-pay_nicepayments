@@ -8,7 +8,15 @@ use App\Helpers\ResponseHelper;
 use App\Http\Controllers\Api\Base\AdminBaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
+use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
+use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
+use Modules\Sirsoft\Ecommerce\Models\Order;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
+use Modules\Sirsoft\Ecommerce\Services\OrderCancellationService;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
 
 /**
@@ -22,6 +30,7 @@ class AdminVbankRefundController extends AdminBaseController
 {
     public function __construct(
         private readonly NicePaymentsApiService $apiService,
+        private readonly OrderCancellationService $cancellationService,
     ) {
         parent::__construct();
     }
@@ -55,7 +64,23 @@ class AdminVbankRefundController extends AdminBaseController
             ]);
         }
 
+        $claimedPayment = null;
+        $pgCancelled = false;
+
         try {
+            $claim = $this->claimRefund($moid, $tid, $cancelAmt);
+            if (isset($claim['error_key'])) {
+                return $this->refundError((string) $claim['error_key'], (int) $claim['status']);
+            }
+
+            /** @var Order $order */
+            $order = $claim['order'];
+            /** @var OrderPayment $payment */
+            $payment = $claim['payment'];
+            $claimedPayment = $payment;
+
+            $this->useStoredCredentials($payment);
+
             $result = $this->apiService->cancelPayment(
                 $tid,
                 $moid,
@@ -66,6 +91,19 @@ class AdminVbankRefundController extends AdminBaseController
                 $refundBankCd,
                 $refundAcctNm,
             );
+            $pgCancelled = true;
+
+            $this->assertCancelResponseMatches($result, $tid, $cancelAmt);
+
+            $cancellation = $this->cancellationService->cancelOrder(
+                $order->fresh(['options', 'payment', 'shippings']),
+                $cancelMsg,
+                null,
+                Auth::id(),
+                false,
+            );
+
+            $this->markRefundCompleted($cancellation->order->payment, $result);
 
             Log::info('NicePayments: admin vbank refund success', [
                 'tid' => $tid,
@@ -81,7 +119,135 @@ class AdminVbankRefundController extends AdminBaseController
                 'error' => $e->getMessage(),
             ]);
 
+            $this->markRefundFailed($claimedPayment, $e, $pgCancelled);
+
             return ResponseHelper::error('messages.failed', 502, null);
         }
+    }
+
+    /**
+     * @return array{order?: Order, payment?: OrderPayment, error_key?: string, status?: int}
+     */
+    private function claimRefund(string $moid, string $tid, int $cancelAmt): array
+    {
+        return DB::transaction(function () use ($moid, $tid, $cancelAmt): array {
+            $order = Order::query()
+                ->where('order_number', $moid)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $order) {
+                return ['error_key' => 'vbank_refund_order_not_found', 'status' => 404];
+            }
+
+            if ($order->order_status !== OrderStatusEnum::PAYMENT_COMPLETE
+                || ! $order->options()->where('option_status', '!=', OrderStatusEnum::CANCELLED->value)->exists()) {
+                return ['error_key' => 'vbank_refund_invalid_payment', 'status' => 422];
+            }
+
+            $payment = $order->payment()->lockForUpdate()->first();
+            if (! $payment || ! $this->isRefundableVbankPayment($payment, $tid)) {
+                return ['error_key' => 'vbank_refund_invalid_payment', 'status' => 422];
+            }
+
+            $meta = $payment->payment_meta ?? [];
+            if (($meta['vbank_refund_status'] ?? null) === 'processing') {
+                return ['error_key' => 'vbank_refund_already_processing', 'status' => 409];
+            }
+
+            if (in_array(($meta['vbank_refund_status'] ?? null), ['completed', 'pg_cancelled_domain_failed'], true)
+                || $payment->isFullyCancelled()) {
+                return ['error_key' => 'vbank_refund_invalid_payment', 'status' => 422];
+            }
+
+            $cancellableAmount = (int) round((float) $payment->getCancellableAmount());
+            if ($cancelAmt !== $cancellableAmount) {
+                return ['error_key' => 'vbank_refund_amount_mismatch', 'status' => 422];
+            }
+
+            $payment->update([
+                'payment_meta' => array_merge($meta, [
+                    'vbank_refund_status' => 'processing',
+                    'vbank_refund_started_at' => now()->toIso8601String(),
+                ]),
+            ]);
+
+            return [
+                'order' => $order->fresh(['options', 'payment', 'shippings']),
+                'payment' => $payment->fresh(),
+            ];
+        });
+    }
+
+    private function isRefundableVbankPayment(OrderPayment $payment, string $tid): bool
+    {
+        return $payment->pg_provider === 'nicepayments'
+            && $payment->payment_method === PaymentMethodEnum::VBANK
+            && $payment->payment_status === PaymentStatusEnum::PAID
+            && $payment->paid_at !== null
+            && $payment->vbank_number !== null
+            && hash_equals((string) $payment->transaction_id, $tid);
+    }
+
+    private function useStoredCredentials(OrderPayment $payment): void
+    {
+        $meta = $payment->payment_meta ?? [];
+        $mid = trim((string) ($meta['mid'] ?? ''));
+        if ($mid === '' || ! array_key_exists('is_test_mode', $meta)) {
+            return;
+        }
+
+        $this->apiService->useStoredCredentials((bool) $meta['is_test_mode'], $mid);
+    }
+
+    private function assertCancelResponseMatches(array $result, string $tid, int $cancelAmt): void
+    {
+        $responseTid = trim((string) ($result['TID'] ?? ''));
+        if ($responseTid !== '' && ! hash_equals($tid, $responseTid)) {
+            throw new \RuntimeException('NicePayments vbank refund TID mismatch');
+        }
+
+        if (isset($result['CancelAmt']) && (int) $result['CancelAmt'] !== $cancelAmt) {
+            throw new \RuntimeException('NicePayments vbank refund amount mismatch');
+        }
+    }
+
+    private function markRefundCompleted(?OrderPayment $payment, array $result): void
+    {
+        if (! $payment) {
+            return;
+        }
+
+        $payment->update([
+            'payment_meta' => array_merge($payment->payment_meta ?? [], [
+                'vbank_refund_status' => 'completed',
+                'vbank_refunded_at' => now()->toIso8601String(),
+                'vbank_refund_result_code' => $result['ResultCode'] ?? null,
+                'vbank_refund_tid' => $result['TID'] ?? $payment->transaction_id,
+            ]),
+        ]);
+    }
+
+    private function markRefundFailed(?OrderPayment $payment, \Throwable $e, bool $pgCancelled): void
+    {
+        if (! $payment) {
+            return;
+        }
+
+        $payment->refresh();
+        $payment->update([
+            'payment_meta' => array_merge($payment->payment_meta ?? [], [
+                'vbank_refund_status' => $pgCancelled ? 'pg_cancelled_domain_failed' : 'failed',
+                'vbank_refund_failed_at' => now()->toIso8601String(),
+                'vbank_refund_error' => $e->getMessage(),
+            ]),
+        ]);
+    }
+
+    private function refundError(string $key, int $status): JsonResponse
+    {
+        return ResponseHelper::error('messages.failed', $status, [
+            'message' => __("sirsoft-pay_nicepayments::messages.errors.{$key}"),
+        ]);
     }
 }
