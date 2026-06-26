@@ -6,7 +6,9 @@ namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 
 use App\Helpers\ResponseHelper;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\PaymentCloseReportRequest;
@@ -62,21 +64,25 @@ class PaymentCloseReportController
             ]);
         }
 
-        if (! $order->order_status->isBeforePayment()) {
-            return ResponseHelper::success('messages.success', [
-                'status' => 'ignored',
-                'reason' => 'order_not_payable',
+        $closeReason = trim((string) ($validated['reason'] ?? ''));
+        $result = $this->recordCloseReportWithLock(
+            $oid,
+            $price,
+            $closeReason !== '' ? $closeReason : self::FAILURE_MESSAGE,
+        );
+
+        if (($result['status'] ?? null) === 'amount_mismatch') {
+            return ResponseHelper::error('messages.failed', 422, [
+                'message' => ['Payment amount does not match the order amount.'],
             ]);
         }
 
-        $closeReason = trim((string) ($validated['reason'] ?? ''));
-        $this->markPaymentWindowClosed(
-            $this->orderService,
-            $order,
-            self::FAILURE_CODE,
-            self::FAILURE_MESSAGE,
-            $closeReason !== '' ? $closeReason : self::FAILURE_MESSAGE,
-        );
+        if (($result['status'] ?? null) === 'ignored') {
+            return ResponseHelper::success('messages.success', [
+                'status' => 'ignored',
+                'reason' => $result['reason'] ?? 'order_not_payable',
+            ]);
+        }
 
         return ResponseHelper::success('messages.success', [
             'status' => 'recorded',
@@ -86,5 +92,39 @@ class PaymentCloseReportController
     private function rateLimitKey(PaymentCloseReportRequest $request, string $oid): string
     {
         return 'sirsoft-pay_nicepayments:payment-close-report:' . sha1($request->ip() . '|' . $oid);
+    }
+
+    /**
+     * @return array{status: string, reason?: string}
+     */
+    private function recordCloseReportWithLock(string $oid, int $price, string $closeReason): array
+    {
+        return DB::transaction(function () use ($oid, $price, $closeReason): array {
+            $lockedOrder = Order::query()
+                ->where('order_number', $oid)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedOrder || ! $lockedOrder->order_status->isBeforePayment()) {
+                return ['status' => 'ignored', 'reason' => 'order_not_payable'];
+            }
+
+            $payment = $lockedOrder->payment()->lockForUpdate()->first();
+            $lockedOrder->setRelation('payment', $payment);
+
+            if ($price !== $this->expectedPaymentPrice($lockedOrder)) {
+                return ['status' => 'amount_mismatch'];
+            }
+
+            $this->markPaymentWindowClosed(
+                $this->orderService,
+                $lockedOrder,
+                self::FAILURE_CODE,
+                self::FAILURE_MESSAGE,
+                $closeReason,
+            );
+
+            return ['status' => 'recorded'];
+        });
     }
 }
