@@ -214,7 +214,7 @@
                   "props": {
                     "className": "text-primary font-medium"
                   },
-                  "text": "{{(Number(order.data.total_tax_amount) - Number(order.data.total_vat_amount)).toLocaleString('ko-KR')}}원"
+                  "text": "{{order.data.total_taxable_supply_amount_formatted}}"
                 }
               ]
             },
