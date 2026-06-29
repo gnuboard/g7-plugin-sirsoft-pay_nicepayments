@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 
+use App\Contracts\Extension\CacheInterface;
 use App\Extension\HookManager;
 use App\Services\PluginSettingsService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use App\Contracts\Extension\CacheInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
@@ -137,9 +139,9 @@ class PaymentCallbackController
      * 사용자 취소(AuthResultCode != '0000') 는 에러 query 없이 체크아웃으로 복귀.
      *
      * @param  AuthCallbackRequest  $request  검증된 콜백 페이로드
-     * @return \Illuminate\Http\RedirectResponse 성공/실패 URL 로 리다이렉트
+     * @return RedirectResponse 성공/실패 URL 로 리다이렉트
      */
-    public function authCallback(AuthCallbackRequest $request): \Illuminate\Http\RedirectResponse
+    public function authCallback(AuthCallbackRequest $request): RedirectResponse
     {
         $validated = $request->validated();
 
@@ -191,12 +193,12 @@ class PaymentCallbackController
         // 동일 AuthToken 으로 짧은 시간 안에 중복 콜백 시도되는 stale replay 가능.
         // Cache 기반 60초 윈도우 디듀프로 보조 방어 (HIGH 2 의 transaction_id replay 가드
         // 외에 추가 계층). transaction_id 까지 도달하기 전 인증 단계 자체에서 차단.
-        $replayCacheKey = 'nicepay_auth_token_seen:' . hash('sha256', $mid . ':' . $authToken . ':' . $txTid);
+        $replayCacheKey = 'nicepay_auth_token_seen:'.hash('sha256', $mid.':'.$authToken.':'.$txTid);
         if ($this->cache->has($replayCacheKey)) {
             Log::warning('NicePayments: duplicate authCallback within freshness window — replay suspected', [
-                'moid'  => $moid,
+                'moid' => $moid,
                 'txTid' => $txTid,
-                'ip'    => $request->ip(),
+                'ip' => $request->ip(),
             ]);
 
             return redirect($this->resolveSuccessUrl($moid));
@@ -283,8 +285,8 @@ class PaymentCallbackController
                 // 실제 결제 완료(PAYMENT_COMPLETE)는 입금 후 vbankNotify()에서 처리
                 $vbankDueAt = null;
                 if (isset($pgResponse['VbankExpDate'])) {
-                    $dateStr = $pgResponse['VbankExpDate'] . ($pgResponse['VbankExpTime'] ?? '235959');
-                    $vbankDueAt = \Carbon\Carbon::createFromFormat('YmdHis', $dateStr);
+                    $dateStr = $pgResponse['VbankExpDate'].($pgResponse['VbankExpTime'] ?? '235959');
+                    $vbankDueAt = Carbon::createFromFormat('YmdHis', $dateStr);
                 }
 
                 $payment = $order->payment;
@@ -304,7 +306,7 @@ class PaymentCallbackController
                         'vbank_num' => $pgResponse['VbankNum'] ?? null,
                         'vbank_name' => $pgResponse['VbankBankName'] ?? null,
                         'vbank_exp_date' => isset($pgResponse['VbankExpDate'])
-                            ? $pgResponse['VbankExpDate'] . ($pgResponse['VbankExpTime'] ?? '235959')
+                            ? $pgResponse['VbankExpDate'].($pgResponse['VbankExpTime'] ?? '235959')
                             : null,
                         'is_test_mode' => $this->apiService->isTestMode(),
                         'pg_response_sanitized' => true,
@@ -336,7 +338,7 @@ class PaymentCallbackController
                     'card_installment_months' => (int) ($pgResponse['CardQuota'] ?? 0),
                     'is_interest_free' => false,
                     'embedded_pg_provider' => null,
-                    'receipt_url' => 'https://npg.nicepay.co.kr/issue/IssueLoader.do?type=0&TID=' . rawurlencode($pgResponse['TID'] ?? $txTid),
+                    'receipt_url' => 'https://npg.nicepay.co.kr/issue/IssueLoader.do?type=0&TID='.rawurlencode($pgResponse['TID'] ?? $txTid),
                     'payment_meta' => [
                         'result_code' => $resultCode,
                         'pay_method' => $payMethod,
@@ -457,14 +459,15 @@ class PaymentCallbackController
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 422);
         }
 
-        // 결제 청구액 SSoT = total_due_amount (마일리지/예치금 차감 후 실청구액).
-        // 클라이언트 SignData 요청액(amt = pg_payment_data.amount = total_due_amount)·코어 최종 승인
-        // 검증과 동일 기준으로 통일한다.
-        if ((int) $order->total_due_amount !== $amt) {
+        // 결제 청구액 SSoT = 결제 통화(order_currency) 환산액 (마일리지/예치금 차감 후 실청구액).
+        // 클라이언트 SignData 요청액(amt = pg_payment_data.amount = resolveOrderPaymentChargeAmount)·
+        // 코어 최종 승인 검증과 동일 기준. base≠결제 통화(예: base JPY, 결제 KRW)에서도 단위가 일치한다.
+        $expectedChargeAmount = $this->expectedPaymentPrice($order);
+        if ($expectedChargeAmount !== $amt) {
             Log::warning('NicePayments: SignData amount mismatch', [
                 'moid' => $moid,
                 'requested_amt' => $amt,
-                'actual_amt' => $order->total_due_amount,
+                'actual_amt' => $expectedChargeAmount,
                 'ip' => $request->ip(),
             ]);
 
@@ -543,7 +546,7 @@ class PaymentCallbackController
 
         if (! $isDeposited) {
             Log::info(
-                'NicePayments: vbank notify ' . ($isCancellation ? 'cancellation' : 'non-deposit'),
+                'NicePayments: vbank notify '.($isCancellation ? 'cancellation' : 'non-deposit'),
                 [
                     'tid' => $tid,
                     'moid' => $moid,
@@ -593,7 +596,7 @@ class PaymentCallbackController
 
                 $this->orderService->completePayment($order, [
                     'transaction_id' => $tid,
-                    'receipt_url' => 'https://npg.nicepay.co.kr/issue/IssueLoader.do?type=0&TID=' . rawurlencode($tid),
+                    'receipt_url' => 'https://npg.nicepay.co.kr/issue/IssueLoader.do?type=0&TID='.rawurlencode($tid),
                     'payment_meta' => [
                         'result_code' => '4110',
                         'auth_date' => $validated['AuthDate'] ?? null,
@@ -770,7 +773,7 @@ class PaymentCallbackController
         if (! empty($queryParams)) {
             $query = http_build_query(array_filter($queryParams));
             $separator = str_contains($baseUrl, '?') ? '&' : '?';
-            $baseUrl = $baseUrl . $separator . $query;
+            $baseUrl = $baseUrl.$separator.$query;
         }
 
         return UrlHelper::toAbsolute($baseUrl);
@@ -821,7 +824,7 @@ class PaymentCallbackController
         array $validated
     ): void {
         try {
-            DB::transaction(function () use ($moid, $tid, $amt, $resultCode, $type, $validated): void {
+            DB::transaction(function () use ($moid, $amt, $resultCode, $type, $validated): void {
                 $order = $this->orderService->findByOrderNumber($moid);
                 if (! $order) {
                     return;
@@ -896,5 +899,4 @@ class PaymentCallbackController
             'last_amt' => $last['amt'] ?? null,
         ];
     }
-
 }
