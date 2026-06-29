@@ -28,7 +28,7 @@ class PaymentCloseReportController
     /**
      * PC 결제창 닫힘 보고를 검증하고 결제 실패/취소 이력을 기록합니다.
      *
-     * @param PaymentCloseReportRequest $request 결제창 닫힘 보고 요청
+     * @param  PaymentCloseReportRequest  $request  결제창 닫힘 보고 요청
      * @return JsonResponse 닫힘 보고 처리 결과
      */
     public function store(PaymentCloseReportRequest $request): JsonResponse
@@ -91,7 +91,7 @@ class PaymentCloseReportController
 
     private function rateLimitKey(PaymentCloseReportRequest $request, string $oid): string
     {
-        return 'sirsoft-pay_nicepayments:payment-close-report:' . sha1($request->ip() . '|' . $oid);
+        return 'sirsoft-pay_nicepayments:payment-close-report:'.sha1($request->ip().'|'.$oid);
     }
 
     /**
@@ -111,6 +111,14 @@ class PaymentCloseReportController
 
             $payment = $lockedOrder->payment()->lockForUpdate()->first();
             $lockedOrder->setRelation('payment', $payment);
+
+            // 결제 성공 콜백과 결제창 닫힘 보고가 경쟁할 때, 카드 주문은 승인 직전까지
+            // order_status=PENDING_ORDER(=isBeforePayment) 라 위 가드를 통과한다. payment_status 가
+            // 이미 PAID 면 결제가 성공한 것이므로 실패 처리하지 않는다(markPaymentWindowClosed 가
+            // 옵션을 취소로 덮어 주문/옵션 상태가 어긋나는 race 차단). 행 락 획득 직후 재확인한다.
+            if ($payment?->isPaid()) {
+                return ['status' => 'ignored', 'reason' => 'payment_already_paid'];
+            }
 
             if ($price !== $this->expectedPaymentPrice($lockedOrder)) {
                 return ['status' => 'amount_mismatch'];
