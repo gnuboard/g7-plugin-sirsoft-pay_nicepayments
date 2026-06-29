@@ -88,6 +88,7 @@ class PaymentRefundListener implements HookListenerInterface
 
         try {
             $apiService = app(NicePaymentsApiService::class);
+            $this->useStoredCredentials($apiService, $payment);
 
             $cancelMsg = $reason ?? __('sirsoft-pay_nicepayments::messages.refund.default_reason');
             $cancelAmt = (int) $refundAmount;
@@ -141,5 +142,16 @@ class PaymentRefundListener implements HookListenerInterface
                 'transaction_id' => null,
             ];
         }
+    }
+
+    private function useStoredCredentials(NicePaymentsApiService $apiService, OrderPayment $payment): void
+    {
+        $meta = $payment->payment_meta ?? [];
+        $mid = trim((string) ($meta['mid'] ?? ''));
+        if ($mid === '' || ! array_key_exists('is_test_mode', $meta)) {
+            return;
+        }
+
+        $apiService->useStoredCredentials((bool) $meta['is_test_mode'], $mid);
     }
 }
