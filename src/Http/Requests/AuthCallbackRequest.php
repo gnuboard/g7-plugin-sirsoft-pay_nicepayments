@@ -79,7 +79,7 @@ class AuthCallbackRequest extends FormRequest
         $url = $baseUrl . $separator . http_build_query(['error' => 'invalid_params']);
 
         throw new HttpResponseException(
-            redirect(UrlHelper::toAbsolute($url, $this))
+            redirect(UrlHelper::toAbsolute($url))
         );
     }
 }

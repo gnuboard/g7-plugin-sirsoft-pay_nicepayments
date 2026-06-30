@@ -10,6 +10,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
 
 class AdminEscrowController extends AdminBaseController
@@ -78,6 +80,15 @@ class AdminEscrowController extends AdminBaseController
         ]);
 
         try {
+            $payment = $this->findRegisterableEscrowPayment($validated['tid']);
+            if (! $payment) {
+                return ResponseHelper::error('messages.failed', 422, [
+                    'message' => ['Escrow payment not found for the requested NicePayments TID.'],
+                ]);
+            }
+
+            $this->useStoredCredentials($payment);
+
             $result = $this->apiService->registerEscrowDelivery(
                 tid: $validated['tid'],
                 deliveryName: $validated['delivery_name'],
@@ -96,5 +107,26 @@ class AdminEscrowController extends AdminBaseController
         } catch (\Exception $e) {
             return ResponseHelper::error($e->getMessage(), 502, null);
         }
+    }
+
+    private function findRegisterableEscrowPayment(string $tid): ?OrderPayment
+    {
+        return OrderPayment::query()
+            ->where('pg_provider', 'nicepayments')
+            ->where('is_escrow', true)
+            ->where('payment_status', PaymentStatusEnum::PAID)
+            ->where('transaction_id', $tid)
+            ->first();
+    }
+
+    private function useStoredCredentials(OrderPayment $payment): void
+    {
+        $meta = $payment->payment_meta ?? [];
+        $mid = trim((string) ($meta['mid'] ?? ''));
+        if ($mid === '' || ! array_key_exists('is_test_mode', $meta)) {
+            return;
+        }
+
+        $this->apiService->useStoredCredentials((bool) $meta['is_test_mode'], $mid);
     }
 }

@@ -6,7 +6,9 @@ namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 
 use App\Helpers\ResponseHelper;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\PaymentCloseReportRequest;
@@ -62,33 +64,25 @@ class PaymentCloseReportController
             ]);
         }
 
-        if (! $order->order_status->isBeforePayment()) {
-            return ResponseHelper::success('messages.success', [
-                'status' => 'ignored',
-                'reason' => 'order_not_payable',
-            ]);
-        }
-
-        // 결제 성공 콜백과 결제창 닫힘 보고가 경쟁할 때, 카드 주문은 승인 직전까지
-        // order_status=PENDING_ORDER 라 위 가드를 통과한다. payment_status 가 이미 PAID 면 결제가
-        // 성공한 것이므로 실패 처리하지 않는다(failPayment 가 옵션을 취소로 덮어 주문/옵션 상태가
-        // 어긋나는 race 차단). failPayment 자체에도 동일 가드가 있으나 여기서 차단해 불필요한
-        // 결제취소 이력 기록까지 미연에 방지한다.
-        if ($order->payment?->isPaid()) {
-            return ResponseHelper::success('messages.success', [
-                'status' => 'ignored',
-                'reason' => 'payment_already_paid',
-            ]);
-        }
-
         $closeReason = trim((string) ($validated['reason'] ?? ''));
-        $this->markPaymentWindowClosed(
-            $this->orderService,
-            $order,
-            self::FAILURE_CODE,
-            self::FAILURE_MESSAGE,
+        $result = $this->recordCloseReportWithLock(
+            $oid,
+            $price,
             $closeReason !== '' ? $closeReason : self::FAILURE_MESSAGE,
         );
+
+        if (($result['status'] ?? null) === 'amount_mismatch') {
+            return ResponseHelper::error('messages.failed', 422, [
+                'message' => ['Payment amount does not match the order amount.'],
+            ]);
+        }
+
+        if (($result['status'] ?? null) === 'ignored') {
+            return ResponseHelper::success('messages.success', [
+                'status' => 'ignored',
+                'reason' => $result['reason'] ?? 'order_not_payable',
+            ]);
+        }
 
         return ResponseHelper::success('messages.success', [
             'status' => 'recorded',
@@ -98,5 +92,47 @@ class PaymentCloseReportController
     private function rateLimitKey(PaymentCloseReportRequest $request, string $oid): string
     {
         return 'sirsoft-pay_nicepayments:payment-close-report:'.sha1($request->ip().'|'.$oid);
+    }
+
+    /**
+     * @return array{status: string, reason?: string}
+     */
+    private function recordCloseReportWithLock(string $oid, int $price, string $closeReason): array
+    {
+        return DB::transaction(function () use ($oid, $price, $closeReason): array {
+            $lockedOrder = Order::query()
+                ->where('order_number', $oid)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedOrder || ! $lockedOrder->order_status->isBeforePayment()) {
+                return ['status' => 'ignored', 'reason' => 'order_not_payable'];
+            }
+
+            $payment = $lockedOrder->payment()->lockForUpdate()->first();
+            $lockedOrder->setRelation('payment', $payment);
+
+            // 결제 성공 콜백과 결제창 닫힘 보고가 경쟁할 때, 카드 주문은 승인 직전까지
+            // order_status=PENDING_ORDER(=isBeforePayment) 라 위 가드를 통과한다. payment_status 가
+            // 이미 PAID 면 결제가 성공한 것이므로 실패 처리하지 않는다(markPaymentWindowClosed 가
+            // 옵션을 취소로 덮어 주문/옵션 상태가 어긋나는 race 차단). 행 락 획득 직후 재확인한다.
+            if ($payment?->isPaid()) {
+                return ['status' => 'ignored', 'reason' => 'payment_already_paid'];
+            }
+
+            if ($price !== $this->expectedPaymentPrice($lockedOrder)) {
+                return ['status' => 'amount_mismatch'];
+            }
+
+            $this->markPaymentWindowClosed(
+                $this->orderService,
+                $lockedOrder,
+                self::FAILURE_CODE,
+                self::FAILURE_MESSAGE,
+                $closeReason,
+            );
+
+            return ['status' => 'recorded'];
+        });
     }
 }
