@@ -3,7 +3,10 @@
 namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
 use Mockery;
+use Modules\Sirsoft\Ecommerce\Database\Factories\OrderFactory;
+use Modules\Sirsoft\Ecommerce\Database\Factories\OrderPaymentFactory;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
+use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderAddress;
@@ -31,10 +34,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             ->once()
             ->with($order, 'USER_CANCEL', '사용자가 나이스페이먼츠 결제창을 닫았습니다.')
             ->andReturn($order);
-        $orderService->shouldReceive('recordPaymentCancellation')
-            ->once()
-            ->with($order, 'USER_CANCEL', 'nicepay-window-closed')
-            ->andReturn($order);
+        $orderService->shouldNotReceive('recordPaymentCancellation');
 
         $this->app->instance(OrderProcessingService::class, $orderService);
 
@@ -49,6 +49,45 @@ class PaymentCloseReportControllerTest extends PluginTestCase
 
         $response->assertOk()
             ->assertJsonPath('data.status', 'recorded');
+    }
+
+    public function test_close_report_marks_real_payment_failed(): void
+    {
+        $order = OrderFactory::new()->create([
+            'order_number' => 'ORD-NICE-CLOSE-REAL',
+            'order_status' => OrderStatusEnum::PENDING_ORDER,
+            'currency' => 'KRW',
+            'subtotal_amount' => 10000,
+            'total_amount' => 10000,
+            'total_due_amount' => 10000,
+            'total_paid_amount' => 0,
+        ]);
+        OrderPaymentFactory::new()->create([
+            'order_id' => $order->id,
+            'payment_status' => PaymentStatusEnum::READY,
+            'payment_method' => PaymentMethodEnum::CARD,
+            'pg_provider' => 'nicepayments',
+            'paid_amount_local' => 0,
+        ]);
+
+        $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
+            'oid' => 'ORD-NICE-CLOSE-REAL',
+            'price' => 10000,
+            'payment_method' => 'card',
+            'reason' => 'nicepay-window-closed',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'recorded');
+
+        $order->refresh();
+        $payment = $order->payment;
+        $payment->refresh();
+
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
+        $this->assertEquals('USER_CANCEL', $order->order_meta['payment_failure_code'] ?? null);
+        $this->assertNull($payment->cancelled_at);
     }
 
     public function test_close_report_rejects_amount_mismatch(): void
