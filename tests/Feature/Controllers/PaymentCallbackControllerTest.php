@@ -218,6 +218,24 @@ class PaymentCallbackControllerTest extends PluginTestCase
             ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
     }
 
+    public function test_sign_data_rejects_live_mode_when_live_mid_is_missing(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings([
+            'is_test_mode' => false,
+            'live_mid' => '',
+            'live_merchant_key' => 'live_key',
+        ]);
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+    }
+
     public function test_sign_data_restores_retryable_failed_nicepayments_order(): void
     {
         $order = $this->createTestOrder(50000);
@@ -891,7 +909,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
             }));
     }
 
-    public function test_auth_callback_skips_net_cancel_when_post_commit_hook_throws_after_payment_complete(): void
+    public function test_auth_callback_rolls_back_and_net_cancels_when_payment_complete_hook_throws_inside_locked_callback(): void
     {
         $order = $this->createTestOrder(50000);
         $this->mockPluginSettings();
@@ -917,12 +935,64 @@ class PaymentCallbackControllerTest extends PluginTestCase
             HookManager::clearAction('sirsoft-ecommerce.order.after_payment_complete');
         }
 
+        $response->assertRedirect("/shop/checkout?error=authorize_failed&orderId={$order->order_number}");
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $order->payment->payment_status);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'netcancel'));
+    }
+
+    public function test_auth_callback_does_not_complete_again_when_order_is_paid_with_another_tid_after_authorize(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $tid = 'TID_CURRENT_AUTH';
+        $params = $this->makeCallbackParams($order->order_number, 50000);
+        $afterCompleteCalls = 0;
+
+        Http::fake([
+            'pay.nicepay.co.kr/v1/authorize' => Http::response(
+                $this->makeAuthorizeResponse($tid, $order->order_number, 50000),
+                200
+            ),
+            'pay.nicepay.co.kr/v1/netcancel' => Http::response('OK', 200),
+        ]);
+
+        HookManager::addAction('sirsoft-pay_nicepayments.payment.after_authorize', function () use ($order): void {
+            $order->update([
+                'order_status' => OrderStatusEnum::PAYMENT_COMPLETE,
+                'total_due_amount' => 0,
+                'total_paid_amount' => 50000,
+                'paid_at' => now(),
+            ]);
+            $order->payment()->update([
+                'payment_status' => PaymentStatusEnum::PAID,
+                'paid_amount_local' => 50000,
+                'paid_at' => now(),
+                'transaction_id' => 'TID_ALREADY_PAID',
+            ]);
+        }, 999);
+        HookManager::addAction('sirsoft-ecommerce.order.after_payment_complete', function () use (&$afterCompleteCalls): void {
+            $afterCompleteCalls++;
+        }, 999);
+
+        try {
+            $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+        } finally {
+            HookManager::clearAction('sirsoft-pay_nicepayments.payment.after_authorize');
+            HookManager::clearAction('sirsoft-ecommerce.order.after_payment_complete');
+        }
+
         $response->assertRedirect("/shop/orders/{$order->order_number}/complete");
+        $this->assertSame(0, $afterCompleteCalls);
 
         $order->refresh();
         $this->assertEquals(OrderStatusEnum::PAYMENT_COMPLETE, $order->order_status);
-        $this->assertEquals(PaymentStatusEnum::PAID, $order->payment->payment_status);
+        $this->assertEquals('TID_ALREADY_PAID', $order->payment->transaction_id);
 
-        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'netcancel'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'netcancel'));
     }
 }

@@ -47,6 +47,11 @@ class NicePaymentsApiService
 
     private static function buildLiveMid(string $suffix): string
     {
+        $suffix = trim($suffix);
+        if ($suffix === '') {
+            return '';
+        }
+
         return str_starts_with($suffix, 'SR') ? $suffix : 'SR' . $suffix;
     }
 
