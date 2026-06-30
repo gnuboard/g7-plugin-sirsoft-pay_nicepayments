@@ -300,6 +300,7 @@ class PaymentCallbackController
                         'result_code' => $resultCode,
                         'pay_method' => $payMethod,
                         'auth_date' => $pgResponse['AuthDate'] ?? null,
+                        'mid' => $this->apiService->getMid(),
                         'vbank_tid' => $pgResponse['TID'] ?? $txTid,
                         'vbank_num' => $pgResponse['VbankNum'] ?? null,
                         'vbank_name' => $pgResponse['VbankBankName'] ?? null,
@@ -316,7 +317,7 @@ class PaymentCallbackController
                 Log::info('NicePayments: vbank account issued', [
                     'moid' => $moid,
                     'vbank_name' => $pgResponse['VbankBankName'] ?? null,
-                    'vbank_number' => $pgResponse['VbankNum'] ?? null,
+                    'vbank_number_last4' => $this->lastFour((string) ($pgResponse['VbankNum'] ?? '')),
                 ]);
             } else {
                 // Replay 가드: 동일 TID 가 이미 paid 상태면 중복 처리하지 않고 성공 페이지로 복귀
@@ -341,6 +342,7 @@ class PaymentCallbackController
                         'result_code' => $resultCode,
                         'pay_method' => $payMethod,
                         'auth_date' => $pgResponse['AuthDate'] ?? null,
+                        'mid' => $this->apiService->getMid(),
                         'is_test_mode' => $this->apiService->isTestMode(),
                         'rcpt_tid' => $pgResponse['RcptTID'] ?? null,
                         'pg_response_sanitized' => true,
@@ -384,6 +386,13 @@ class PaymentCallbackController
                 'moid' => $moid,
                 'error' => $e->getMessage(),
             ]);
+
+            $approvedTid = $pgResponse['TID'] ?? $txTid;
+            if ($this->wasAlreadyPaid((string) $approvedTid)) {
+                $this->logReplayDetected((string) $approvedTid, $moid, 'authCallback exception');
+
+                return redirect($this->resolveSuccessUrl($moid));
+            }
 
             $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
 
@@ -571,14 +580,26 @@ class PaymentCallbackController
             }
 
             $alreadyProcessed = false;
+            $contextError = null;
 
-            DB::transaction(function () use ($order, $tid, $amt, $validated, &$alreadyProcessed): void {
+            DB::transaction(function () use ($order, $tid, $amt, $validated, &$alreadyProcessed, &$contextError): void {
                 // 동시 입금 통보 중복 처리 방지: 행 단위 잠금
                 $payment = $order->payment()->lockForUpdate()->first();
 
-                if ($payment && $payment->transaction_id === $tid) {
+                if (! $payment) {
+                    $contextError = 'payment_not_found';
+
+                    return;
+                }
+
+                if ($payment->isPaid() && hash_equals((string) $payment->transaction_id, $tid)) {
                     $alreadyProcessed = true;
 
+                    return;
+                }
+
+                $contextError = $this->validateVbankNotifyContext($order, $payment, $validated, $tid, $amt);
+                if ($contextError !== null) {
                     return;
                 }
 
@@ -598,6 +619,8 @@ class PaymentCallbackController
                         'result_code' => '4110',
                         'auth_date' => $validated['AuthDate'] ?? null,
                         'auth_code' => $validated['AuthCode'] ?? null,
+                        'mid' => $validated['MID'] ?? $this->apiService->getMid(),
+                        'vbank_tid' => $tid,
                         'vbank_num' => $validated['VbankNum'] ?? null,
                         'vbank_name' => $validated['VbankName'] ?? null,
                         'vbank_input_name' => $validated['VbankInputName'] ?? null,
@@ -618,14 +641,22 @@ class PaymentCallbackController
                 $order->payment?->update(['pg_provider' => 'nicepayments']);
             });
 
-            if ($alreadyProcessed) {
+            if ($contextError !== null) {
+                Log::warning('NicePayments: vbank notify context mismatch', [
+                    'reason' => $contextError,
+                    'tid' => $tid,
+                    'moid' => $moid,
+                    'amt' => $amt,
+                ]);
+
+                return response('FAIL', 200)->header('Content-Type', 'text/plain');
+            } elseif ($alreadyProcessed) {
                 Log::info('NicePayments: vbank notify - already processed', ['tid' => $tid, 'moid' => $moid]);
             } else {
                 Log::info('NicePayments: vbank deposit confirmed', [
                     'tid' => $tid,
                     'moid' => $moid,
                     'amt' => $amt,
-                    'depositor' => $validated['VbankInputName'] ?? null,
                     'auth_date' => $validated['AuthDate'] ?? null,
                 ]);
             }
@@ -641,6 +672,47 @@ class PaymentCallbackController
 
             return response('FAIL', 200)->header('Content-Type', 'text/plain');
         }
+    }
+
+    private function validateVbankNotifyContext(
+        Order $order,
+        OrderPayment $payment,
+        array $validated,
+        string $tid,
+        int $amount,
+    ): ?string {
+        if (! in_array($payment->payment_method?->value, ['vbank', 'virtual_account'], true)) {
+            return 'payment_method_not_vbank';
+        }
+
+        if ($payment->payment_status !== PaymentStatusEnum::WAITING_DEPOSIT) {
+            return 'payment_not_waiting_deposit';
+        }
+
+        $meta = $payment->payment_meta ?? [];
+        $storedTid = trim((string) ($payment->transaction_id ?: ($meta['vbank_tid'] ?? '')));
+        if ($storedTid === '' || ! hash_equals($storedTid, $tid)) {
+            return 'tid_mismatch';
+        }
+
+        $storedMid = trim((string) ($meta['mid'] ?? ''));
+        $expectedMid = $storedMid !== '' ? $storedMid : $this->apiService->getMid();
+        $receivedMid = trim((string) ($validated['MID'] ?? ''));
+        if ($expectedMid === '' || $receivedMid === '' || ! hash_equals($expectedMid, $receivedMid)) {
+            return 'mid_mismatch';
+        }
+
+        $storedAccount = trim((string) ($payment->vbank_number ?: ($meta['vbank_num'] ?? '')));
+        $receivedAccount = trim((string) ($validated['VbankNum'] ?? ''));
+        if ($storedAccount === '' || $receivedAccount === '' || ! hash_equals($storedAccount, $receivedAccount)) {
+            return 'vbank_account_mismatch';
+        }
+
+        if ($amount !== $this->expectedPaymentPrice($order)) {
+            return 'amount_mismatch';
+        }
+
+        return null;
     }
 
     private function restoreRetryableNicepayOrder(Order $order, OrderPayment $payment): bool
@@ -895,6 +967,16 @@ class PaymentCallbackController
             'last_depositor' => $last['depositor'] ?? null,
             'last_amt' => $last['amt'] ?? null,
         ];
+    }
+
+    private function lastFour(string $value): ?string
+    {
+        $digits = $this->digitsOnly($value);
+        if ($digits === '') {
+            return null;
+        }
+
+        return substr($digits, -4);
     }
 
 }

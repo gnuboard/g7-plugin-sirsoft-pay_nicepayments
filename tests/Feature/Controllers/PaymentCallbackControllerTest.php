@@ -2,8 +2,11 @@
 
 namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
+use App\Extension\HookManager;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Mockery;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderPaymentFactory;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
@@ -139,6 +142,27 @@ class PaymentCallbackControllerTest extends PluginTestCase
             'FnCd' => '004',
             'FnName' => '국민은행',
         ], $overrides);
+    }
+
+    private function markVbankIssued(Order $order, string $tid, int $amount, array $overrides = []): void
+    {
+        $order->payment()->update([
+            'payment_method' => PaymentMethodEnum::VBANK,
+            'payment_status' => PaymentStatusEnum::WAITING_DEPOSIT,
+            'pg_provider' => 'nicepayments',
+            'vbank_name' => $overrides['vbank_name'] ?? '국민은행',
+            'vbank_number' => $overrides['vbank_number'] ?? '1234567890',
+            'vbank_issued_at' => now(),
+            'payment_meta' => array_merge([
+                'result_code' => '4100',
+                'pay_method' => 'VBANK',
+                'mid' => self::TEST_MID,
+                'vbank_tid' => $tid,
+                'vbank_num' => $overrides['vbank_number'] ?? '1234567890',
+                'vbank_name' => $overrides['vbank_name'] ?? '국민은행',
+                'is_test_mode' => true,
+            ], $overrides['payment_meta'] ?? []),
+        ]);
     }
 
     // ===== SignData 생성 테스트 =====
@@ -688,11 +712,13 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
     public function test_vbank_notify_returns_ok_on_successful_deposit(): void
     {
-        $order = $this->createTestOrder(30000);
+        $tid = 'VBANK_TID_001';
+        $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
+        $this->markVbankIssued($order, $tid, 30000);
 
         $response = $this->post(
             '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
-            $this->makeVbankNotifyPayload($order->order_number, 30000, ['TID' => 'VBANK_TID_001'])
+            $this->makeVbankNotifyPayload($order->order_number, 30000, ['TID' => $tid])
         );
 
         $response->assertOk();
@@ -704,12 +730,14 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
     public function test_vbank_notify_stores_only_whitelisted_pg_response_fields(): void
     {
-        $order = $this->createTestOrder(30000);
+        $tid = 'VBANK_TID_SANITIZED';
+        $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
+        $this->markVbankIssued($order, $tid, 30000);
 
         $response = $this->post(
             '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
             $this->makeVbankNotifyPayload($order->order_number, 30000, [
-                'TID' => 'VBANK_TID_SANITIZED',
+                'TID' => $tid,
                 'name' => '구매자명',
                 'BuyerEmail' => 'buyer@example.test',
                 'MallUserID' => 'member-001',
@@ -767,8 +795,25 @@ class PaymentCallbackControllerTest extends PluginTestCase
     public function test_vbank_notify_is_idempotent_for_same_tid(): void
     {
         $tid = 'VBANK_TID_DUPLICATE';
-        $order = $this->createTestOrder(30000);
-        $order->payment()->update(['transaction_id' => $tid]);
+        $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
+        $order->update([
+            'order_status' => OrderStatusEnum::PAYMENT_COMPLETE,
+            'total_paid_amount' => 30000,
+            'total_due_amount' => 0,
+        ]);
+        $order->payment()->update([
+            'payment_status' => PaymentStatusEnum::PAID,
+            'paid_amount_local' => 30000,
+            'paid_at' => now(),
+            'transaction_id' => $tid,
+            'vbank_number' => '1234567890',
+            'payment_meta' => [
+                'mid' => self::TEST_MID,
+                'vbank_tid' => $tid,
+                'vbank_num' => '1234567890',
+                'is_test_mode' => true,
+            ],
+        ]);
 
         $response = $this->post(
             '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
@@ -779,6 +824,105 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $this->assertEquals('OK', $response->getContent());
 
         $order->refresh();
+        $this->assertEquals(OrderStatusEnum::PAYMENT_COMPLETE, $order->order_status);
+    }
+
+    public function test_vbank_notify_rejects_mismatched_context_without_completing_order(): void
+    {
+        $tid = 'VBANK_TID_SECURE';
+        $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
+        $this->markVbankIssued($order, $tid, 30000);
+
+        $response = $this->post(
+            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
+            $this->makeVbankNotifyPayload($order->order_number, 30000, [
+                'TID' => 'VBANK_TID_FORGED',
+                'MID' => self::TEST_MID,
+                'VbankNum' => '1234567890',
+            ])
+        );
+
+        $response->assertOk();
+        $this->assertEquals('FAIL', $response->getContent());
+
+        $order->refresh();
         $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+        $this->assertNull($order->payment->transaction_id);
+    }
+
+    public function test_vbank_notify_rejects_amount_mismatch_without_completing_order(): void
+    {
+        $tid = 'VBANK_TID_AMOUNT';
+        $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
+        $this->markVbankIssued($order, $tid, 30000);
+
+        $response = $this->post(
+            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
+            $this->makeVbankNotifyPayload($order->order_number, 29999, ['TID' => $tid])
+        );
+
+        $response->assertOk();
+        $this->assertEquals('FAIL', $response->getContent());
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+    }
+
+    public function test_vbank_notify_success_log_does_not_include_depositor_or_full_account(): void
+    {
+        Log::spy();
+
+        $tid = 'VBANK_TID_LOG_SAFE';
+        $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
+        $this->markVbankIssued($order, $tid, 30000);
+
+        $response = $this->post(
+            '/plugins/sirsoft-pay_nicepayments/payment/vbank-notify',
+            $this->makeVbankNotifyPayload($order->order_number, 30000, ['TID' => $tid])
+        );
+
+        $response->assertOk();
+
+        Log::shouldHaveReceived('info')
+            ->with('NicePayments: vbank deposit confirmed', Mockery::on(function (array $context): bool {
+                return ! array_key_exists('depositor', $context)
+                    && ! array_key_exists('vbank_number', $context)
+                    && ! array_key_exists('vbank_num', $context);
+            }));
+    }
+
+    public function test_auth_callback_skips_net_cancel_when_post_commit_hook_throws_after_payment_complete(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $tid = 'TID_POST_COMMIT';
+        $params = $this->makeCallbackParams($order->order_number, 50000);
+
+        Http::fake([
+            'pay.nicepay.co.kr/v1/authorize' => Http::response(
+                $this->makeAuthorizeResponse($tid, $order->order_number, 50000),
+                200
+            ),
+            'pay.nicepay.co.kr/v1/netcancel' => Http::response('OK', 200),
+        ]);
+
+        HookManager::addAction('sirsoft-ecommerce.order.after_payment_complete', function (): void {
+            throw new \RuntimeException('post commit listener failed');
+        }, 999);
+
+        try {
+            $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+        } finally {
+            HookManager::clearAction('sirsoft-ecommerce.order.after_payment_complete');
+        }
+
+        $response->assertRedirect("/shop/orders/{$order->order_number}/complete");
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::PAYMENT_COMPLETE, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::PAID, $order->payment->payment_status);
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'netcancel'));
     }
 }
