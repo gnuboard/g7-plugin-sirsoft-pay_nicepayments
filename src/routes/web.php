@@ -29,10 +29,13 @@ Route::withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfTok
             ->name('payment.vbank-notify');
     });
 
-// SignData 생성: 비회원 결제도 결제창 진입 직전에 호출하므로 인증 미들웨어를 걸지 않는다.
-// 대신 컨트롤러에서 주문번호, 결제 전 상태, 나이스페이 결제 레코드, 청구 금액을 모두 검증한다.
+// SignData 생성: CSRF 제외 + 인증 필수 (로그인 사용자만 결제 가능)
+//
+// 인증 가드: 'auth:sanctum,web' — Sanctum Bearer 토큰(SPA/PAT) 우선,
+// 없으면 web 세션 쿠키로 fallback. 'auth' 단독(=web guard 만 체크)은
+// localStorage 의 Sanctum 토큰만 들고 있는 SPA 클라이언트를 막아 401 발생함.
 Route::withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
-    ->middleware(['throttle:30,1'])
+    ->middleware(['auth:sanctum,web', 'throttle:30,1'])
     ->group(function () {
         Route::post('/payment/sign-data', [PaymentCallbackController::class, 'signData'])
             ->name('payment.sign-data');

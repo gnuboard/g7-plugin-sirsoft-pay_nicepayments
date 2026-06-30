@@ -101,34 +101,6 @@ class PaymentRefundListenerTest extends PluginTestCase
         $this->assertEquals('TID_CANCEL', $result['transaction_id']);
     }
 
-    public function test_process_refund_restores_payment_time_mid_and_mode(): void
-    {
-        [$order, $payment] = $this->createOrderWithPayment('TID_STORED_MID', 50000);
-        $payment->update([
-            'payment_meta' => [
-                'mid' => 'SRLIVE001',
-                'is_test_mode' => false,
-            ],
-        ]);
-        $payment->refresh();
-
-        $apiServiceMock = $this->createMock(NicePaymentsApiService::class);
-        $apiServiceMock->expects($this->once())
-            ->method('useStoredCredentials')
-            ->with(false, 'SRLIVE001');
-        $apiServiceMock->expects($this->once())
-            ->method('cancelPayment')
-            ->willReturn(['ResultCode' => '2001', 'TID' => 'TID_CANCEL']);
-
-        $this->app->instance(NicePaymentsApiService::class, $apiServiceMock);
-
-        $listener = new PaymentRefundListener();
-        $result = $listener->processRefund([], $order, $payment, 50000.0, '고객 요청');
-
-        $this->assertTrue($result['success']);
-        $this->assertEquals('TID_CANCEL', $result['transaction_id']);
-    }
-
     public function test_process_refund_fires_refund_failed_hook_on_api_error(): void
     {
         [$order, $payment] = $this->createOrderWithPayment('TID_FAIL', 50000);

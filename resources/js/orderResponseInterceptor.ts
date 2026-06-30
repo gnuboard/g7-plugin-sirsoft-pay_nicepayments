@@ -68,18 +68,6 @@ function replacePaymentMethodInBody(body: string, newMethod: string): string {
     return body;
 }
 
-function resolveOrderPaymentAmount(orderData: Record<string, unknown>): number {
-    const candidates = [orderData.total_due_amount, orderData.total_amount];
-    for (const candidate of candidates) {
-        const amount = Number(candidate ?? 0);
-        if (Number.isFinite(amount) && amount > 0) {
-            return Math.floor(amount);
-        }
-    }
-
-    return 0;
-}
-
 export function installOrderResponseInterceptor(): void {
     const w = window as unknown as Record<string, unknown>;
     if (w[FETCH_FLAG]) return;
@@ -201,8 +189,9 @@ export function installOrderResponseInterceptor(): void {
                 pgPaymentData = {
                     order_number: orderData.order_number,
                     order_name: orderName,
-                    // PG 청구액 SSoT는 total_due_amount. 구형 응답 호환만 total_amount로 fallback.
-                    amount: resolveOrderPaymentAmount(orderData),
+                    // paid_amount_local은 주문 생성 시점에 항상 0이므로 total_amount 직접 사용
+                    // total_amount는 "57000.00" 형태의 문자열이므로 정수로 변환
+                    amount: Math.floor(Number(orderData.total_amount ?? 0)),
                     currency: 'KRW',
                     customer_name: orderData.orderer_name ?? null,
                     customer_email: orderData.orderer_email ?? null,

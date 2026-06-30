@@ -3,13 +3,11 @@
 namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
 use Mockery;
-use Modules\Sirsoft\Ecommerce\Database\Factories\OrderFactory;
-use Modules\Sirsoft\Ecommerce\Database\Factories\OrderPaymentFactory;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
-use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderAddress;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Tests\PluginTestCase;
 
@@ -17,75 +15,40 @@ class PaymentCloseReportControllerTest extends PluginTestCase
 {
     public function test_close_report_marks_pending_order_failed_and_payment_cancelled(): void
     {
-        $order = OrderFactory::new()->create([
-            'order_number' => 'ORD-NICE-CLOSE-001',
-            'order_status' => OrderStatusEnum::PENDING_ORDER,
-            'currency' => 'KRW',
-            'subtotal_amount' => 10000,
-            'total_amount' => 10000,
-            'total_due_amount' => 10000,
-            'total_paid_amount' => 0,
-        ]);
-        OrderPaymentFactory::new()->create([
-            'order_id' => $order->id,
-            'payment_status' => PaymentStatusEnum::READY,
-            'payment_method' => PaymentMethodEnum::CARD,
-            'pg_provider' => 'nicepayments',
-            'paid_amount_local' => 0,
-        ]);
+        $order = $this->makeOrder('ORD-NICE-CLOSE-001', 10000);
+        $order->setRelation('shippingAddress', new OrderAddress([
+            'address_type' => 'shipping',
+            'orderer_email' => 'buyer@example.com',
+            'orderer_phone' => '010-1234-5678',
+        ]));
+
+        $orderService = Mockery::mock(OrderProcessingService::class);
+        $orderService->shouldReceive('findByOrderNumber')
+            ->once()
+            ->with('ORD-NICE-CLOSE-001')
+            ->andReturn($order);
+        $orderService->shouldReceive('failPayment')
+            ->once()
+            ->with($order, 'USER_CANCEL', '사용자가 나이스페이먼츠 결제창을 닫았습니다.')
+            ->andReturn($order);
+        $orderService->shouldReceive('recordPaymentCancellation')
+            ->once()
+            ->with($order, 'USER_CANCEL', 'nicepay-window-closed')
+            ->andReturn($order);
+
+        $this->app->instance(OrderProcessingService::class, $orderService);
 
         $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
             'oid' => 'ORD-NICE-CLOSE-001',
             'price' => 10000,
+            'buyer_email' => 'BUYER@example.com',
+            'buyer_phone' => '01012345678',
             'payment_method' => 'card',
             'reason' => 'nicepay-window-closed',
         ]);
 
         $response->assertOk()
             ->assertJsonPath('data.status', 'recorded');
-
-        $order->refresh();
-        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
-        $this->assertEquals(PaymentStatusEnum::FAILED, $order->payment->payment_status);
-    }
-
-    public function test_close_report_marks_real_payment_failed(): void
-    {
-        $order = OrderFactory::new()->create([
-            'order_number' => 'ORD-NICE-CLOSE-REAL',
-            'order_status' => OrderStatusEnum::PENDING_ORDER,
-            'currency' => 'KRW',
-            'subtotal_amount' => 10000,
-            'total_amount' => 10000,
-            'total_due_amount' => 10000,
-            'total_paid_amount' => 0,
-        ]);
-        OrderPaymentFactory::new()->create([
-            'order_id' => $order->id,
-            'payment_status' => PaymentStatusEnum::READY,
-            'payment_method' => PaymentMethodEnum::CARD,
-            'pg_provider' => 'nicepayments',
-            'paid_amount_local' => 0,
-        ]);
-
-        $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
-            'oid' => 'ORD-NICE-CLOSE-REAL',
-            'price' => 10000,
-            'payment_method' => 'card',
-            'reason' => 'nicepay-window-closed',
-        ]);
-
-        $response->assertOk()
-            ->assertJsonPath('data.status', 'recorded');
-
-        $order->refresh();
-        $payment = $order->payment;
-        $payment->refresh();
-
-        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
-        $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
-        $this->assertEquals('USER_CANCEL', $order->order_meta['payment_failure_code'] ?? null);
-        $this->assertNull($payment->cancelled_at);
     }
 
     public function test_close_report_rejects_amount_mismatch(): void
@@ -166,66 +129,37 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             ->assertJsonPath('data.reason', 'order_not_payable');
     }
 
-    public function test_close_report_rechecks_locked_order_before_marking_failed(): void
+    public function test_close_report_ignores_order_when_payment_already_paid(): void
     {
-        $order = OrderFactory::new()->create([
-            'order_number' => 'ORD-NICE-CLOSE-RACE',
-            'order_status' => OrderStatusEnum::PENDING_ORDER,
-            'currency' => 'KRW',
-            'subtotal_amount' => 10000,
-            'total_amount' => 10000,
-            'total_due_amount' => 10000,
-            'total_paid_amount' => 0,
-        ]);
-        OrderPaymentFactory::new()->create([
-            'order_id' => $order->id,
-            'payment_status' => PaymentStatusEnum::READY,
-            'payment_method' => PaymentMethodEnum::CARD,
-            'pg_provider' => 'nicepayments',
-            'paid_amount_local' => 0,
-        ]);
-
-        $staleOrder = $order->fresh(['payment']);
-        $order->update([
-            'order_status' => OrderStatusEnum::PAYMENT_COMPLETE,
-            'total_due_amount' => 0,
-            'total_paid_amount' => 10000,
-            'paid_at' => now(),
-        ]);
-        $order->payment()->update([
+        // race 재현: 승인 콜백이 payment 를 먼저 PAID 로 갱신했으나 order_status 는 아직 PENDING_ORDER.
+        $order = $this->makeOrder('ORD-NICE-CLOSE-PAID-001', 10000);
+        $order->setRelation('payment', new OrderPayment([
             'payment_status' => PaymentStatusEnum::PAID,
-            'paid_amount_local' => 10000,
-            'paid_at' => now(),
-            'transaction_id' => 'TID_ALREADY_PAID',
-        ]);
+        ]));
 
         $orderService = Mockery::mock(OrderProcessingService::class);
         $orderService->shouldReceive('findByOrderNumber')
             ->once()
-            ->with('ORD-NICE-CLOSE-RACE')
-            ->andReturn($staleOrder);
+            ->with('ORD-NICE-CLOSE-PAID-001')
+            ->andReturn($order);
         $orderService->shouldNotReceive('failPayment');
+        $orderService->shouldNotReceive('recordPaymentCancellation');
+
         $this->app->instance(OrderProcessingService::class, $orderService);
 
         $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
-            'oid' => 'ORD-NICE-CLOSE-RACE',
+            'oid' => 'ORD-NICE-CLOSE-PAID-001',
             'price' => 10000,
-            'payment_method' => 'card',
-            'reason' => 'nicepay-window-closed',
         ]);
 
         $response->assertOk()
             ->assertJsonPath('data.status', 'ignored')
-            ->assertJsonPath('data.reason', 'order_not_payable');
-
-        $order->refresh();
-        $this->assertEquals(OrderStatusEnum::PAYMENT_COMPLETE, $order->order_status);
-        $this->assertEquals(PaymentStatusEnum::PAID, $order->payment->payment_status);
+            ->assertJsonPath('data.reason', 'payment_already_paid');
     }
 
     private function makeOrder(string $orderNumber, int $amount): Order
     {
-        $order = new Order();
+        $order = new Order;
         $order->order_number = $orderNumber;
         $order->order_status = OrderStatusEnum::PENDING_ORDER;
         $order->currency = 'KRW';

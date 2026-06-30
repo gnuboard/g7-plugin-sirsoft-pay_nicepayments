@@ -28,13 +28,9 @@ class NicePaymentsApiService
 
     private bool $useEscrow;
 
-    /** @var array<string, mixed> */
-    private array $settings;
-
     public function __construct(PluginSettingsService $pluginSettingsService)
     {
         $settings = $pluginSettingsService->get(self::PLUGIN_IDENTIFIER) ?? [];
-        $this->settings = $settings;
         $this->isTest = $settings['is_test_mode'] ?? true;
         $this->mid = $this->isTest
             ? ($settings['test_mid'] ?? '')
@@ -47,11 +43,6 @@ class NicePaymentsApiService
 
     private static function buildLiveMid(string $suffix): string
     {
-        $suffix = trim($suffix);
-        if ($suffix === '') {
-            return '';
-        }
-
         return str_starts_with($suffix, 'SR') ? $suffix : 'SR' . $suffix;
     }
 
@@ -83,25 +74,6 @@ class NicePaymentsApiService
     public function isTestMode(): bool
     {
         return $this->isTest;
-    }
-
-    /**
-     * 결제 당시 저장된 MID/모드로 API 서명 컨텍스트를 복원합니다.
-     *
-     * 과거 결제 환불 시 운영자가 테스트/운영 모드 또는 MID 설정을 바꿨어도
-     * 취소 요청은 결제 당시 MID 로 서명되어야 합니다. MerchantKey 는 보안상
-     * payment_meta 에 저장하지 않고 현재 설정의 해당 모드 키를 사용합니다.
-     *
-     * @param  bool  $isTest  결제 당시 테스트 모드 여부
-     * @param  string  $mid  결제 당시 MID
-     */
-    public function useStoredCredentials(bool $isTest, string $mid): void
-    {
-        $this->isTest = $isTest;
-        $this->mid = $isTest ? $mid : self::buildLiveMid($mid);
-        $this->merchantKey = $isTest
-            ? (string) ($this->settings['test_merchant_key'] ?? '')
-            : (string) ($this->settings['live_merchant_key'] ?? '');
     }
 
     /**

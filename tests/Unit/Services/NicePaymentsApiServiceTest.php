@@ -45,18 +45,7 @@ class NicePaymentsApiServiceTest extends PluginTestCase
             'live_merchant_key' => 'live_key',
         ]);
 
-        $this->assertEquals('SRlive_mid_value', $service->getMid());
-    }
-
-    public function test_get_mid_returns_empty_when_live_mid_is_missing(): void
-    {
-        $service = $this->makeService([
-            'is_test_mode' => false,
-            'live_mid' => '',
-            'live_merchant_key' => 'live_key',
-        ]);
-
-        $this->assertSame('', $service->getMid());
+        $this->assertEquals('live_mid_value', $service->getMid());
     }
 
     public function test_verify_callback_signature_returns_true_on_valid_signature(): void
@@ -213,7 +202,7 @@ class NicePaymentsApiServiceTest extends PluginTestCase
         $tid = 'TID_QUERY_TEST';
 
         Http::fake([
-            'webapi.nicepay.co.kr/webapi/inquery/trans_status.jsp' => Http::response([
+            'pg-api.nicepay.co.kr/webapi/trade_status.jsp' => Http::response([
                 'ResultCode' => '2000',
                 'ResultMsg' => '정상처리',
                 'TID' => $tid,
@@ -227,7 +216,7 @@ class NicePaymentsApiServiceTest extends PluginTestCase
         $this->assertEquals($tid, $result['TID']);
 
         Http::assertSent(function ($request) use ($tid) {
-            return str_contains($request->url(), 'trans_status.jsp')
+            return str_contains($request->url(), 'trade_status.jsp')
                 && $request['TID'] === $tid
                 && $request['MID'] === self::TEST_MID
                 && isset($request['EdiDate'])

@@ -76,7 +76,8 @@ class RegisterPgProviderListener implements HookListenerInterface
         $settings = $this->getPluginSettings();
         $isTest = $settings['is_test_mode'] ?? true;
 
-        $liveMid = $this->buildLiveMid((string) ($settings['live_mid'] ?? ''));
+        $liveMid = $settings['live_mid'] ?? '';
+        $liveMid = str_starts_with($liveMid, 'SR') ? $liveMid : 'SR' . $liveMid;
 
         $easyPayKeys = ['NAVERPAY' => 'easy_pay_naverpay', 'KAKAOPAY' => 'easy_pay_kakaopay', 'SAMSUNGPAY' => 'easy_pay_samsungpay', 'APPLEPAY' => 'easy_pay_applepay', 'PAYCO' => 'easy_pay_payco', 'SKPAY' => 'easy_pay_skpay', 'SSGPAY' => 'easy_pay_ssgpay', 'LPAY' => 'easy_pay_lpay'];
         $enabledEasyPays = array_values(array_keys(array_filter($easyPayKeys, fn ($key) => (bool) ($settings[$key] ?? false))));
@@ -116,15 +117,5 @@ class RegisterPgProviderListener implements HookListenerInterface
     private function getPluginSettings(): array
     {
         return plugin_settings(self::PLUGIN_IDENTIFIER);
-    }
-
-    private function buildLiveMid(string $suffix): string
-    {
-        $suffix = trim($suffix);
-        if ($suffix === '') {
-            return '';
-        }
-
-        return str_starts_with($suffix, 'SR') ? $suffix : 'SR' . $suffix;
     }
 }
