@@ -12,9 +12,12 @@ use Illuminate\Http\Response;
 use App\Contracts\Extension\CacheInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Exceptions\PaymentAmountMismatchException;
 use Modules\Sirsoft\Ecommerce\Helpers\DeviceDetector;
+use Modules\Sirsoft\Ecommerce\Models\Order;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\PreventsReplayCallback;
 use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
@@ -384,6 +387,18 @@ class PaymentCallbackController
 
             $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
 
+            if (isset($order)) {
+                try {
+                    $failedOrder = $this->orderService->failPayment($order, 'AUTHORIZE_EXCEPTION', $e->getMessage());
+                    $this->markNicePaymentFailed($failedOrder, 'AUTHORIZE_EXCEPTION', $e->getMessage());
+                } catch (\Throwable $recordingError) {
+                    Log::warning('NicePayments: failed to record authorize exception as payment failure', [
+                        'moid' => $moid,
+                        'error' => $recordingError->getMessage(),
+                    ]);
+                }
+            }
+
             return redirect($this->resolveFailUrl([
                 'error' => 'authorize_failed',
                 'orderId' => $moid,
@@ -430,12 +445,7 @@ class PaymentCallbackController
 
         $payment = $order->payment()->first();
 
-        if (
-            ! $order->order_status->isBeforePayment()
-            || ! $payment
-            || $payment->pg_provider !== 'nicepayments'
-            || $payment->payment_status !== PaymentStatusEnum::READY
-        ) {
+        if (! $payment || $payment->pg_provider !== 'nicepayments') {
             Log::warning('NicePayments: SignData rejected for non-payable order', [
                 'moid' => $moid,
                 'order_status' => $order->order_status->value,
@@ -459,6 +469,20 @@ class PaymentCallbackController
             ]);
 
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_amount')], 422);
+        }
+
+        if (! $order->order_status->isBeforePayment() || $payment->payment_status !== PaymentStatusEnum::READY) {
+            if (! $this->restoreRetryableNicepayOrder($order, $payment)) {
+                Log::warning('NicePayments: SignData rejected for non-payable order', [
+                    'moid' => $moid,
+                    'order_status' => $order->order_status->value,
+                    'payment_status' => $payment->payment_status?->value,
+                    'pg_provider' => $payment->pg_provider,
+                    'ip' => $request->ip(),
+                ]);
+
+                return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 422);
+            }
         }
 
         $ediDate = $this->apiService->generateEdiDate();
@@ -617,6 +641,81 @@ class PaymentCallbackController
 
             return response('FAIL', 200)->header('Content-Type', 'text/plain');
         }
+    }
+
+    private function restoreRetryableNicepayOrder(Order $order, OrderPayment $payment): bool
+    {
+        if (! $this->isRetryableNicepayFailure($order, $payment)) {
+            return false;
+        }
+
+        DB::transaction(function () use ($order, $payment) {
+            $now = now()->toIso8601String();
+            $orderMeta = $order->order_meta ?? [];
+            $paymentMeta = $payment->payment_meta ?? [];
+
+            $previousFailure = array_filter([
+                'code' => $orderMeta['payment_failure_code'] ?? $paymentMeta['failure_code'] ?? null,
+                'message' => $orderMeta['payment_failure_message'] ?? $paymentMeta['failure_message'] ?? null,
+                'failed_at' => $orderMeta['payment_failed_at'] ?? $paymentMeta['failed_at'] ?? null,
+            ], fn ($value) => $value !== null && $value !== '');
+
+            if ($previousFailure !== []) {
+                $history = $orderMeta['nicepayments_retry_failures'] ?? [];
+                $history = is_array($history) ? $history : [];
+                $history[] = $previousFailure;
+                $orderMeta['nicepayments_retry_failures'] = array_slice($history, -5);
+            }
+
+            unset(
+                $orderMeta['payment_failure_code'],
+                $orderMeta['payment_failure_message'],
+                $orderMeta['payment_failed_at'],
+                $paymentMeta['failure_code'],
+                $paymentMeta['failure_message'],
+                $paymentMeta['failed_at'],
+                $paymentMeta['failure_source'],
+            );
+
+            $orderMeta['nicepayments_retry_count'] = (int) ($orderMeta['nicepayments_retry_count'] ?? 0) + 1;
+            $orderMeta['nicepayments_retry_started_at'] = $now;
+            $paymentMeta['retry_count'] = (int) ($paymentMeta['retry_count'] ?? 0) + 1;
+            $paymentMeta['retry_started_at'] = $now;
+
+            $order->update([
+                'order_status' => OrderStatusEnum::PENDING_ORDER,
+                'order_meta' => $orderMeta,
+            ]);
+
+            $payment->update([
+                'payment_status' => PaymentStatusEnum::READY,
+                'payment_meta' => $paymentMeta,
+                'paid_at' => null,
+                'cancelled_at' => null,
+            ]);
+        });
+
+        Log::info('NicePayments: retryable failed order restored for SignData', [
+            'moid' => $order->order_number,
+            'payment_id' => $payment->id,
+        ]);
+
+        return true;
+    }
+
+    private function isRetryableNicepayFailure(Order $order, OrderPayment $payment): bool
+    {
+        $paymentMeta = $payment->payment_meta ?? [];
+        $failureCode = (string) ($paymentMeta['failure_code'] ?? $order->order_meta['payment_failure_code'] ?? '');
+
+        return $order->order_status === OrderStatusEnum::CANCELLED
+            && $payment->pg_provider === 'nicepayments'
+            && $payment->payment_status === PaymentStatusEnum::FAILED
+            && ($paymentMeta['failure_source'] ?? null) === 'nicepayments'
+            && $failureCode !== 'AMOUNT_MISMATCH'
+            && blank($payment->transaction_id)
+            && blank($payment->card_approval_number)
+            && $payment->paid_at === null;
     }
 
     private function markAuthPhaseFailureIfOrderMatches(
