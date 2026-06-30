@@ -8,13 +8,16 @@ use Illuminate\Http\Request;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderAddress;
+use Modules\Sirsoft\Ecommerce\Services\CurrencyConversionService;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 
 trait RecordsPaymentWindowClosure
 {
     protected function expectedPaymentPrice(Order $order): int
     {
-        return (int) round((float) $order->total_due_amount);
+        // 결제 청구액 SSoT = 결제 통화(order_currency) 환산액. base(total_due_amount) 직접 비교 시
+        // base≠결제 통화에서 PG 청구 통화와 단위가 어긋난다(buildPgPaymentData 와 동일 기준).
+        return app(CurrencyConversionService::class)->resolveOrderPaymentChargeAmount($order);
     }
 
     protected function requestMatchesOrderBuyer(Request $request, Order $order): bool
