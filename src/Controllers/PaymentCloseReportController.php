@@ -58,7 +58,18 @@ class PaymentCloseReportController
             ]);
         }
 
-        if ($price !== $this->expectedPaymentPrice($order)) {
+        $expectedPrice = $this->resolveExpectedPaymentPriceOrNull($order, 'close_report', [
+            'oid' => $oid,
+            'received_price' => $price,
+            'ip' => $request->ip(),
+        ]);
+        if ($expectedPrice === null) {
+            return ResponseHelper::error('messages.failed', 422, [
+                'message' => ['Payment currency is not chargeable.'],
+            ]);
+        }
+
+        if ($price !== $expectedPrice) {
             return ResponseHelper::error('messages.failed', 422, [
                 'message' => ['Payment amount does not match the order amount.'],
             ]);
@@ -74,6 +85,12 @@ class PaymentCloseReportController
         if (($result['status'] ?? null) === 'amount_mismatch') {
             return ResponseHelper::error('messages.failed', 422, [
                 'message' => ['Payment amount does not match the order amount.'],
+            ]);
+        }
+
+        if (($result['status'] ?? null) === 'invalid_payment_currency') {
+            return ResponseHelper::error('messages.failed', 422, [
+                'message' => ['Payment currency is not chargeable.'],
             ]);
         }
 
@@ -120,7 +137,15 @@ class PaymentCloseReportController
                 return ['status' => 'ignored', 'reason' => 'payment_already_paid'];
             }
 
-            if ($price !== $this->expectedPaymentPrice($lockedOrder)) {
+            $expectedPrice = $this->resolveExpectedPaymentPriceOrNull($lockedOrder, 'close_report_locked', [
+                'oid' => $oid,
+                'received_price' => $price,
+            ]);
+            if ($expectedPrice === null) {
+                return ['status' => 'invalid_payment_currency'];
+            }
+
+            if ($price !== $expectedPrice) {
                 return ['status' => 'amount_mismatch'];
             }
 

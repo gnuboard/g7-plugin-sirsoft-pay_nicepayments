@@ -69,6 +69,31 @@ abstract class PluginTestCase extends TestCase
         ];
     }
 
+    protected static function unchargeableUsdCurrencySnapshot(): array
+    {
+        return [
+            'base_currency' => 'KRW',
+            'order_currency' => 'USD',
+            'base_unit' => 1,
+            'exchange_rates' => [
+                'KRW' => [
+                    'rate' => 1,
+                    'rounding_unit' => '1',
+                    'rounding_method' => 'round',
+                    'decimal_places' => 0,
+                    'base_unit' => 1,
+                ],
+                'USD' => [
+                    'rate' => 0,
+                    'rounding_unit' => '0.01',
+                    'rounding_method' => 'round',
+                    'decimal_places' => 2,
+                    'base_unit' => 1,
+                ],
+            ],
+        ];
+    }
+
     protected function registerModuleAutoload(): void
     {
         $moduleBasePath = base_path('modules/sirsoft-ecommerce/src/');

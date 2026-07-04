@@ -8,6 +8,7 @@ use App\Contracts\Extension\CacheInterface;
 use App\Extension\HookManager;
 use App\Services\PluginSettingsService;
 use Carbon\Carbon;
+use InvalidArgumentException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -360,6 +361,25 @@ class PaymentCallbackController
 
             return redirect($this->resolveFailUrl(['error' => 'amount_mismatch', 'orderId' => $moid]));
 
+        } catch (InvalidArgumentException $e) {
+            Log::error('NicePayments: invalid payment currency during authorization', [
+                'moid' => $moid,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
+
+            if (isset($order)) {
+                $failureMessage = $this->invalidPaymentCurrencyFailureMessage($e);
+                $failedOrder = $this->orderService->failPayment($order, 'INVALID_PAYMENT_CURRENCY', $failureMessage);
+                $this->markNicePaymentFailed($failedOrder, 'INVALID_PAYMENT_CURRENCY', $failureMessage);
+            }
+
+            return redirect($this->resolveFailUrl([
+                'error' => 'invalid_payment_currency',
+                'orderId' => $moid,
+            ]));
+
         } catch (\Exception $e) {
             Log::error('NicePayments: authorize exception', [
                 'moid' => $moid,
@@ -600,7 +620,15 @@ class PaymentCallbackController
         // 결제 청구액 SSoT = 결제 통화(order_currency) 환산액 (마일리지/예치금 차감 후 실청구액).
         // 클라이언트 SignData 요청액(amt = pg_payment_data.amount = resolveOrderPaymentChargeAmount)·
         // 코어 최종 승인 검증과 동일 기준. base≠결제 통화(예: base JPY, 결제 KRW)에서도 단위가 일치한다.
-        $expectedChargeAmount = $this->expectedPaymentPrice($order);
+        $expectedChargeAmount = $this->resolveExpectedPaymentPriceOrNull($order, 'sign_data', [
+            'moid' => $moid,
+            'requested_amt' => $amt,
+            'ip' => $request->ip(),
+        ]);
+        if ($expectedChargeAmount === null) {
+            return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 422);
+        }
+
         if ($expectedChargeAmount !== $amt) {
             Log::warning('NicePayments: SignData amount mismatch', [
                 'moid' => $moid,
@@ -850,7 +878,15 @@ class PaymentCallbackController
             return 'vbank_account_mismatch';
         }
 
-        if ($amount !== $this->expectedPaymentPrice($order)) {
+        $expectedAmount = $this->resolveExpectedPaymentPriceOrNull($order, 'vbank_notify', [
+            'tid' => $tid,
+            'received_amt' => $amount,
+        ]);
+        if ($expectedAmount === null) {
+            return 'invalid_payment_currency';
+        }
+
+        if ($amount !== $expectedAmount) {
             return 'amount_mismatch';
         }
 
@@ -944,7 +980,15 @@ class PaymentCallbackController
 
         try {
             $order = $this->orderService->findByOrderNumber($moid);
-            if (! $order || $amount !== $this->expectedPaymentPrice($order)) {
+            if (! $order) {
+                return;
+            }
+
+            $expectedAmount = $this->resolveExpectedPaymentPriceOrNull($order, 'auth_phase_failure', [
+                'moid' => $moid,
+                'received_amt' => $amount,
+            ]);
+            if ($expectedAmount === null || $amount !== $expectedAmount) {
                 return;
             }
 

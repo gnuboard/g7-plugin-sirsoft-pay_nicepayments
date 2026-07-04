@@ -204,6 +204,28 @@ class PaymentCallbackControllerTest extends PluginTestCase
             ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_amount'));
     }
 
+    public function test_sign_data_rejects_unchargeable_payment_currency(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update([
+            'currency' => 'USD',
+            'currency_snapshot' => self::unchargeableUsdCurrencySnapshot(),
+        ]);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::READY, $order->payment->payment_status);
+    }
+
     public function test_sign_data_rejects_non_payable_order(): void
     {
         $order = $this->createTestOrder(50000);
@@ -675,6 +697,41 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $this->assertEquals('AUTHORIZE_EXCEPTION', $order->order_meta['payment_failure_code'] ?? null);
         $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
         $this->assertEquals('AUTHORIZE_EXCEPTION', $payment->payment_meta['failure_code'] ?? null);
+    }
+
+    public function test_auth_callback_records_invalid_payment_currency_as_failed_payment(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update([
+            'currency' => 'USD',
+            'currency_snapshot' => self::unchargeableUsdCurrencySnapshot(),
+        ]);
+        $this->mockPluginSettings();
+
+        $params = $this->makeCallbackParams($order->order_number, 50000);
+
+        Http::fake([
+            'pay.nicepay.co.kr/v1/authorize' => Http::response(
+                $this->makeAuthorizeResponse('TID_INVALID_CURRENCY', $order->order_number, 50000),
+                200
+            ),
+            'pay.nicepay.co.kr/v1/netcancel' => Http::response('OK', 200),
+        ]);
+
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+
+        $response->assertRedirect();
+        $this->assertStringContainsString('error=invalid_payment_currency', $response->headers->get('Location'));
+
+        $order->refresh();
+        $payment = $order->payment->fresh();
+
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals('INVALID_PAYMENT_CURRENCY', $order->order_meta['payment_failure_code'] ?? null);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
+        $this->assertEquals('INVALID_PAYMENT_CURRENCY', $payment->payment_meta['failure_code'] ?? null);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/netcancel'));
     }
 
     public function test_auth_callback_redirects_to_fail_url_on_missing_params(): void

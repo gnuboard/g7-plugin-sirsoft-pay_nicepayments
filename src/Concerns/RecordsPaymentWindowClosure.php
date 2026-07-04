@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Plugins\Sirsoft\PayNicepayments\Concerns;
 
+use InvalidArgumentException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderAddress;
@@ -18,6 +20,42 @@ trait RecordsPaymentWindowClosure
         // 결제 청구액 SSoT = 결제 통화(order_currency) 환산액. base(total_due_amount) 직접 비교 시
         // base≠결제 통화에서 PG 청구 통화와 단위가 어긋난다(buildPgPaymentData 와 동일 기준).
         return app(CurrencyConversionService::class)->resolveOrderPaymentChargeAmount($order);
+    }
+
+    protected function resolveExpectedPaymentPriceOrNull(Order $order, string $context, array $logContext = []): ?int
+    {
+        try {
+            return $this->expectedPaymentPrice($order);
+        } catch (InvalidArgumentException $e) {
+            $this->logInvalidPaymentCurrency($order, $e, $context, $logContext);
+
+            return null;
+        }
+    }
+
+    protected function invalidPaymentCurrencyFailureMessage(InvalidArgumentException $e): string
+    {
+        $message = trim($e->getMessage());
+
+        return $message !== ''
+            ? $message
+            : '나이스페이먼츠 결제 통화 환율 설정이 올바르지 않습니다.';
+    }
+
+    protected function logInvalidPaymentCurrency(
+        Order $order,
+        InvalidArgumentException $e,
+        string $context,
+        array $logContext = [],
+    ): void {
+        Log::error('NicePayments: payment currency is not chargeable', array_merge([
+            'context' => $context,
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'currency' => $order->currency,
+            'currency_snapshot' => $order->currency_snapshot,
+            'error' => $e->getMessage(),
+        ], $logContext));
     }
 
     protected function requestMatchesOrderBuyer(Request $request, Order $order): bool

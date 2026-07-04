@@ -113,6 +113,31 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             ->assertJsonPath('errors.message.0', 'Payment amount does not match the order amount.');
     }
 
+    public function test_close_report_rejects_unchargeable_payment_currency_without_marking_failed(): void
+    {
+        $order = $this->makeOrder('ORD-NICE-CLOSE-CURRENCY', 10000);
+        $order->currency = 'USD';
+        $order->currency_snapshot = self::unchargeableUsdCurrencySnapshot();
+
+        $orderService = Mockery::mock(OrderProcessingService::class);
+        $orderService->shouldReceive('findByOrderNumber')
+            ->once()
+            ->with('ORD-NICE-CLOSE-CURRENCY')
+            ->andReturn($order);
+        $orderService->shouldNotReceive('failPayment');
+        $orderService->shouldNotReceive('recordPaymentCancellation');
+
+        $this->app->instance(OrderProcessingService::class, $orderService);
+
+        $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
+            'oid' => 'ORD-NICE-CLOSE-CURRENCY',
+            'price' => 10000,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('errors.message.0', 'Payment currency is not chargeable.');
+    }
+
     public function test_close_report_rejects_buyer_mismatch(): void
     {
         $order = $this->makeOrder('ORD-NICE-CLOSE-003', 10000);
