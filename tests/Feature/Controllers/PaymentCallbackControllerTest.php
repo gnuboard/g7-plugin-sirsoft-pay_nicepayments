@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Mockery;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderFactory;
+use Modules\Sirsoft\Ecommerce\Database\Factories\OrderOptionFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderPaymentFactory;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
@@ -576,9 +577,12 @@ class PaymentCallbackControllerTest extends PluginTestCase
         }
     }
 
-    public function test_auth_callback_records_pre_authorize_failure_when_amount_matches_order(): void
+    public function test_auth_callback_keeps_pre_authorize_failure_retryable_when_amount_matches_order(): void
     {
         $order = $this->createTestOrder(50000);
+        $option = OrderOptionFactory::new()->forOrder($order)->create([
+            'option_status' => OrderStatusEnum::PENDING_ORDER,
+        ]);
         $this->mockPluginSettings();
 
         $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', [
@@ -592,10 +596,14 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $this->assertStringNotContainsString('error=', $response->headers->get('Location'));
 
         $order->refresh();
-        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
-        $this->assertEquals('0021', $order->order_meta['payment_failure_code'] ?? null);
-        $this->assertEquals(PaymentStatusEnum::FAILED, $order->payment->payment_status);
-        $this->assertNull($order->payment->cancelled_at);
+        $payment = $order->payment->fresh();
+
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+        $this->assertArrayNotHasKey('payment_failure_code', $order->order_meta ?? []);
+        $this->assertEquals(PaymentStatusEnum::READY, $payment->payment_status);
+        $this->assertArrayNotHasKey('failure_code', $payment->payment_meta ?? []);
+        $this->assertNull($payment->cancelled_at);
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $option->refresh()->option_status);
     }
 
     public function test_auth_callback_redirects_to_fail_on_mid_mismatch(): void

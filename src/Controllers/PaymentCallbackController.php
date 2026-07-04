@@ -175,13 +175,6 @@ class PaymentCallbackController
                 'ip' => $request->ip(),
             ]);
 
-            $this->markAuthPhaseFailureIfOrderMatches(
-                $moid,
-                isset($validated['Amt']) ? (int) $validated['Amt'] : null,
-                $authResultCode,
-                $authResultMsg,
-            );
-
             return redirect($this->resolveFailUrl([]));
         }
 
@@ -966,49 +959,6 @@ class PaymentCallbackController
             && blank($payment->transaction_id)
             && blank($payment->card_approval_number)
             && $payment->paid_at === null;
-    }
-
-    private function markAuthPhaseFailureIfOrderMatches(
-        string $moid,
-        ?int $amount,
-        string $failureCode,
-        string $failureMessage,
-    ): void {
-        if (trim($moid) === '' || $amount === null || $amount < 1) {
-            return;
-        }
-
-        try {
-            $order = $this->orderService->findByOrderNumber($moid);
-            if (! $order) {
-                return;
-            }
-
-            $expectedAmount = $this->resolveExpectedPaymentPriceOrNull($order, 'auth_phase_failure', [
-                'moid' => $moid,
-                'received_amt' => $amount,
-            ]);
-            if ($expectedAmount === null || $amount !== $expectedAmount) {
-                return;
-            }
-
-            $message = trim($failureMessage) !== ''
-                ? $failureMessage
-                : '나이스페이먼츠 인증 단계가 완료되지 않았습니다.';
-
-            $this->markPaymentWindowClosed(
-                $this->orderService,
-                $order,
-                $failureCode !== '' ? $failureCode : 'USER_CANCEL',
-                $message,
-                $message,
-            );
-        } catch (\Throwable $e) {
-            Log::warning('NicePayments: failed to record auth phase payment cancellation', [
-                'moid' => $moid,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     private function resolveSuccessUrl(string $orderId): string
