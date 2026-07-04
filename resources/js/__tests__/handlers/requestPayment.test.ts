@@ -247,9 +247,13 @@ describe('requestPaymentHandler', () => {
 
             const form = submitSpy.mock.instances[0] as HTMLFormElement;
             const reservedInput = form.querySelector('input[name="NicepayReserved"]') as HTMLInputElement | null;
+            const mallReservedInput = form.querySelector('input[name="MallReserved"]') as HTMLInputElement | null;
+            const mallReserved1Input = form.querySelector('input[name="MallReserved1"]') as HTMLInputElement | null;
 
             expect(getSubmittedPayMethod()).toBe('CARD');
             expect(reservedInput?.value).toBe('DirectKakao=Y');
+            expect(mallReservedInput?.value).toBe('nicepay_easy_pay_method=nicepay_kakaopay');
+            expect(mallReserved1Input?.value).toBe('nicepay_kakaopay');
         });
 
         it('모바일 form 은 acceptCharset=euc-kr', async () => {

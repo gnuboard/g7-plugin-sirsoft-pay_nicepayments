@@ -11,6 +11,11 @@ type Payment = {
     [key: string]: unknown;
 };
 
+interface ReceiptInfo {
+    receipt_url?: string | null;
+    payment_method_display_label?: string | null;
+}
+
 function getToken(): string | null {
     return localStorage.getItem('auth_token');
 }
@@ -31,7 +36,7 @@ async function fetchPayment(orderNumber: string): Promise<Payment | null> {
     }
 }
 
-async function fetchReceiptUrl(orderNumber: string): Promise<string | null> {
+async function fetchReceiptInfo(orderNumber: string): Promise<ReceiptInfo | null> {
     const token = getToken();
     if (!token) return null;
 
@@ -40,11 +45,35 @@ async function fetchReceiptUrl(orderNumber: string): Promise<string | null> {
             headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         });
         if (!res.ok) return null;
-        const data = (await res.json()) as { receipt_url?: string };
-        return data.receipt_url ?? null;
+        return (await res.json()) as ReceiptInfo;
     } catch {
         return null;
     }
+}
+
+function patchPaymentMethodDisplay(displayLabel: string | null | undefined): boolean {
+    if (!displayLabel) return false;
+
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('div'));
+    for (const row of rows) {
+        const spans = Array.from(row.children).filter(
+            (child): child is HTMLElement => child instanceof HTMLElement && child.tagName === 'SPAN',
+        );
+        if (spans.length < 2) continue;
+
+        const label = spans[0].textContent?.trim();
+        if (label !== '결제 방법' && label !== '결제수단' && label !== '결제 방식') continue;
+
+        const value = spans[spans.length - 1];
+        if (value.textContent?.trim() !== displayLabel) {
+            value.textContent = displayLabel;
+            value.dataset.nicepayPaymentMethodPatched = 'true';
+        }
+        row.dataset.nicepayPaymentMethodRow = 'true';
+        return true;
+    }
+
+    return false;
 }
 
 async function injectOnOrderComplete(orderNumber: string): Promise<void> {
@@ -59,6 +88,9 @@ async function injectOnOrderComplete(orderNumber: string): Promise<void> {
 
     if (!blueBtn?.parentElement) return;
 
+    const receiptInfo = await fetchReceiptInfo(orderNumber);
+    patchPaymentMethodDisplay(receiptInfo?.payment_method_display_label);
+
     const container = blueBtn.parentElement;
 
     const receiptBtn = document.createElement('button');
@@ -72,9 +104,10 @@ async function injectOnOrderComplete(orderNumber: string): Promise<void> {
     receiptBtn.addEventListener('click', async () => {
         receiptBtn.disabled = true;
         receiptBtn.textContent = '로딩 중...';
-        const url = await fetchReceiptUrl(orderNumber);
+        const data = await fetchReceiptInfo(orderNumber);
         receiptBtn.disabled = false;
         receiptBtn.textContent = '영수증 조회';
+        const url = data?.receipt_url ?? null;
         if (url) {
             window.open(url, 'nicepay_receipt', 'width=800,height=600,scrollbars=yes,resizable=yes');
         }

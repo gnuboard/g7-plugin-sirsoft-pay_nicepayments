@@ -23,6 +23,7 @@ use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\PreventsReplayCallback;
 use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
+use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
 use Plugins\Sirsoft\PayNicepayments\Concerns\SanitizesPgResponse;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\AuthCallbackRequest;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\VbankNotifyRequest;
@@ -40,6 +41,7 @@ class PaymentCallbackController
 {
     use PreventsReplayCallback;
     use RecordsPaymentWindowClosure;
+    use ResolvesEasyPayDisplay;
     use SanitizesPgResponse;
 
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
@@ -72,6 +74,7 @@ class PaymentCallbackController
         'RcptTID',
         'EscrowYN',
         'MallReserved',
+        'MallReserved1',
         'Currency',
     ];
 
@@ -92,6 +95,7 @@ class PaymentCallbackController
         'RcptTID',
         'EscrowYN',
         'MallReserved',
+        'MallReserved1',
     ];
 
     private const VBANK_NOTIFY_RESPONSE_KEYS = [
@@ -306,7 +310,7 @@ class PaymentCallbackController
                 ]);
             } else {
                 $effectiveTid = (string) ($pgResponse['TID'] ?? $txTid);
-                $completionStatus = $this->completeAuthorizedPaymentWithLock($moid, $pgResponse, $txTid, $amt, $isEscrow, $request);
+                $completionStatus = $this->completeAuthorizedPaymentWithLock($moid, $pgResponse, $txTid, $amt, $isEscrow, $request, $validated);
 
                 if ($completionStatus === 'already_paid') {
                     $this->logReplayDetected($effectiveTid, $moid, 'authCallback (card)');
@@ -468,8 +472,9 @@ class PaymentCallbackController
         int $amt,
         bool $isEscrow,
         Request $request,
+        array $callbackPayload,
     ): string {
-        return DB::transaction(function () use ($moid, $pgResponse, $txTid, $amt, $isEscrow, $request): string {
+        return DB::transaction(function () use ($moid, $pgResponse, $txTid, $amt, $isEscrow, $request, $callbackPayload): string {
             $lockedOrder = Order::query()
                 ->where('order_number', $moid)
                 ->lockForUpdate()
@@ -499,6 +504,7 @@ class PaymentCallbackController
             }
 
             $lockedOrder->setRelation('payment', $payment);
+            $easyPayMeta = $this->resolveEasyPayMeta(array_merge($pgResponse, $callbackPayload));
 
             $this->orderService->completePayment($lockedOrder, [
                 'transaction_id' => $effectiveTid,
@@ -507,10 +513,17 @@ class PaymentCallbackController
                 'card_name' => $pgResponse['IssuCardName'] ?? $pgResponse['CardName'] ?? null,
                 'card_installment_months' => (int) ($pgResponse['CardQuota'] ?? 0),
                 'is_interest_free' => false,
-                'embedded_pg_provider' => null,
+                'embedded_pg_provider' => $easyPayMeta['provider'] ?? null,
                 'receipt_url' => 'https://npg.nicepay.co.kr/issue/IssueLoader.do?type=0&TID='.rawurlencode($effectiveTid),
                 'payment_meta' => [
                     'result_code' => $pgResponse['ResultCode'] ?? null,
+                    ...($easyPayMeta === [] ? [] : [
+                        'nicepay_easy_pay_method' => $easyPayMeta['method'],
+                        'nicepay_easy_pay_provider' => $easyPayMeta['provider'],
+                        'nicepay_easy_pay_label' => $easyPayMeta['label'],
+                        'embedded_pg_provider' => $easyPayMeta['provider'],
+                        'embedded_pg_provider_label' => $easyPayMeta['label'],
+                    ]),
                     'pay_method' => $pgResponse['PayMethod'] ?? null,
                     'auth_date' => $pgResponse['AuthDate'] ?? null,
                     'mid' => $this->apiService->getMid(),

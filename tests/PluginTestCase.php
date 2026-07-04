@@ -51,6 +51,24 @@ abstract class PluginTestCase extends TestCase
         \Illuminate\Support\Facades\Config::set('app.url', env('APP_URL', 'http://localhost'));
     }
 
+    protected static function krwCurrencySnapshot(): array
+    {
+        return [
+            'base_currency' => 'KRW',
+            'order_currency' => 'KRW',
+            'base_unit' => 1,
+            'exchange_rates' => [
+                'KRW' => [
+                    'rate' => 1,
+                    'rounding_unit' => '1',
+                    'rounding_method' => 'round',
+                    'decimal_places' => 0,
+                    'base_unit' => 1,
+                ],
+            ],
+        ];
+    }
+
     protected function registerModuleAutoload(): void
     {
         $moduleBasePath = base_path('modules/sirsoft-ecommerce/src/');

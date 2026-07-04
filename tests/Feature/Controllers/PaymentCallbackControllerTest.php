@@ -63,6 +63,8 @@ class PaymentCallbackControllerTest extends PluginTestCase
             'total_points_used_amount' => 0,
             'total_deposit_used_amount' => 0,
             'total_paid_amount' => 0,
+            'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
         ]);
 
         OrderPaymentFactory::new()->create([
@@ -385,6 +387,42 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $payment->refresh();
         $this->assertEquals($tid, $payment->transaction_id);
         $this->assertEquals('APP12345', $payment->card_approval_number);
+    }
+
+    public function test_auth_callback_stores_easy_pay_display_metadata(): void
+    {
+        app()->setLocale('ko');
+
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $tid = 'TID_EASY_PAY_' . uniqid();
+        $params = $this->makeCallbackParams($order->order_number, 50000, [
+            'MallReserved' => 'nicepay_easy_pay_method=nicepay_kakaopay',
+            'MallReserved1' => 'nicepay_kakaopay',
+        ]);
+
+        Http::fake([
+            'pay.nicepay.co.kr/v1/authorize' => Http::response(
+                $this->makeAuthorizeResponse($tid, $order->order_number, 50000),
+                200
+            ),
+        ]);
+
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+
+        $response->assertRedirect("/shop/orders/{$order->order_number}/complete");
+
+        $payment = $order->payment;
+        $payment->refresh();
+        $meta = $payment->payment_meta;
+
+        $this->assertSame('kakaopay', $payment->embedded_pg_provider);
+        $this->assertSame('nicepay_kakaopay', $meta['nicepay_easy_pay_method'] ?? null);
+        $this->assertSame('kakaopay', $meta['nicepay_easy_pay_provider'] ?? null);
+        $this->assertSame('카카오페이', $meta['nicepay_easy_pay_label']['ko'] ?? null);
+        $this->assertSame('KakaoPay', $meta['nicepay_easy_pay_label']['en'] ?? null);
+        $this->assertSame('kakaopay', $meta['embedded_pg_provider'] ?? null);
     }
 
     public function test_auth_callback_stores_only_whitelisted_pg_response_fields(): void

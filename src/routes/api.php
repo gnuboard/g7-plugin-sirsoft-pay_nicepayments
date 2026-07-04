@@ -55,6 +55,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', 'admin'])->g
         ->middleware('permission:admin,sirsoft-ecommerce.orders.read')
         ->name('orders.test-mode-map');
 
+    // 주문 목록 간편결제 표시 맵 조회
+    Route::get('/orders/easy-pay-display-map', [AdminOrderListController::class, 'easyPayDisplayMap'])
+        ->middleware('permission:admin,sirsoft-ecommerce.orders.read')
+        ->name('orders.easy-pay-display-map');
+
     // 가상계좌 입금 완료 건 환불 (환불 계좌 정보 필요)
     Route::post('/vbank-refund', [AdminVbankRefundController::class, 'refund'])
         ->middleware('permission:admin,sirsoft-ecommerce.orders.update')

@@ -21,6 +21,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-001',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -55,6 +56,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-REAL',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -172,6 +174,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-RACE',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -232,6 +235,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-PAID',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -270,6 +274,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
         $order->order_number = $orderNumber;
         $order->order_status = OrderStatusEnum::PENDING_ORDER;
         $order->currency = 'KRW';
+        $order->currency_snapshot = self::krwCurrencySnapshot();
         $order->total_due_amount = $amount;
 
         return $order;

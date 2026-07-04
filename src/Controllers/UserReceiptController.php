@@ -7,9 +7,12 @@ namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
 
 class UserReceiptController
 {
+    use ResolvesEasyPayDisplay;
+
     private const RECEIPT_BASE_URL = 'https://npg.nicepay.co.kr/issue/IssueLoader.do';
 
     /**
@@ -31,7 +34,13 @@ class UserReceiptController
             ->join('ecommerce_orders as o', 'o.id', '=', 'p.order_id')
             ->where('o.order_number', $orderNumber)
             ->where('o.user_id', $user->id)
-            ->select(['p.transaction_id', 'p.receipt_url', 'p.payment_meta'])
+            ->select([
+                'p.transaction_id',
+                'p.receipt_url',
+                'p.payment_meta',
+                'p.payment_method',
+                'p.embedded_pg_provider',
+            ])
             ->first();
 
         if (! $payment) {
@@ -45,6 +54,7 @@ class UserReceiptController
 
         $cashReceiptUrl = null;
         $isTestMode = false;
+        $display = $this->resolvePaymentDisplay($payment);
         if ($payment->payment_meta) {
             $meta = json_decode($payment->payment_meta, true);
             $rcptTid = $meta['rcpt_tid'] ?? ($meta['pg_raw_response']['RcptTID'] ?? null);
@@ -58,6 +68,11 @@ class UserReceiptController
             'receipt_url' => $receiptUrl,
             'cash_receipt_url' => $cashReceiptUrl,
             'is_test_mode' => $isTestMode,
+            'payment_method_label' => $display['payment_method_label'],
+            'payment_method_display_label' => $display['payment_method_display_label'],
+            'selected_payment_method' => $display['selected_payment_method'],
+            'embedded_pg_provider' => $display['embedded_pg_provider'],
+            'embedded_pg_provider_label' => $display['embedded_pg_provider_label'],
         ]);
     }
 }

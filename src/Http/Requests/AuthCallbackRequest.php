@@ -53,6 +53,8 @@ class AuthCallbackRequest extends FormRequest
                 'AuthResultMsg' => ['nullable', 'string'],
                 'Moid' => ['nullable', 'string'],
                 'Amt' => ['nullable', 'integer', 'min:1'],
+                'MallReserved' => ['nullable', 'string', 'max:1000'],
+                'MallReserved1' => ['nullable', 'string', 'max:20'],
             ];
         }
 
@@ -68,6 +70,8 @@ class AuthCallbackRequest extends FormRequest
             'Amt' => ['required', 'integer', 'min:1'],
             'NetCancelURL' => ['required', 'string', 'url'],
             'Signature' => ['required', 'string'],
+            'MallReserved' => ['nullable', 'string', 'max:1000'],
+            'MallReserved1' => ['nullable', 'string', 'max:20'],
         ];
     }
 

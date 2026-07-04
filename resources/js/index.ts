@@ -5,6 +5,7 @@ import { installCheckoutEasyPayInjector } from './checkoutEasyPayInjector';
 import { installOrderCompleteReceiptInjector } from './orderCompleteReceiptInjector';
 import { installMypageOrderShowInjector } from './mypageOrderShowInjector';
 import { installAdminPaymentMethodBrandInjector } from './adminPaymentMethodBrandInjector';
+import { installAdminOrderPaymentDisplayInjector } from './adminOrderPaymentDisplayInjector';
 
 const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
 
@@ -53,6 +54,7 @@ function initPlugin(): void {
     installOrderCompleteReceiptInjector();
     installMypageOrderShowInjector();
     installAdminPaymentMethodBrandInjector();
+    installAdminOrderPaymentDisplayInjector();
 
     const doInit = () => {
         const count = registerHandlers();

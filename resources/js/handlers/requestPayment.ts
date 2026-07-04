@@ -267,6 +267,8 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
             DirectEasyPay: '',
             NicepayReserved: '',
             EasyPayMethod: '',
+            MallReserved: '',
+            MallReserved1: '',
         };
 
         // 휴대폰결제: 상품 유형 덮어쓰기 (0:디지털컨텐츠, 1:실물)
@@ -281,6 +283,8 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
         // 간편결제 directive 필드 설정 — gnu5 orderform.js switch(settle_method==='간편결제') 동일
         if (isEasyPay) {
             formFields.DirectShowOpt = 'CARD';
+            formFields.MallReserved = `nicepay_easy_pay_method=${encodeURIComponent(paymentMethod)}`;
+            formFields.MallReserved1 = paymentMethod;
             switch (paymentMethod) {
                 case 'nicepay_naverpay':
                     formFields.DirectEasyPay = 'E020';
