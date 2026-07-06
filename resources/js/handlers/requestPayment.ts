@@ -208,10 +208,7 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
         }
 
         // 3. 서버에서 EdiDate + SignData 생성
-        //    sign-data 엔드포인트는 'auth' 미들웨어가 걸려있어 Sanctum Bearer 토큰
-        //    또는 세션 쿠키 중 하나가 필요. SPA 모드에서 토큰만 있는 경우를 대비해
-        //    localStorage 의 auth_token 을 Authorization 헤더로 명시 전달하고,
-        //    credentials:include 로 세션 쿠키도 함께 전송 (둘 중 하나만 있어도 통과).
+        //    공개 엔드포인트지만 서버에서 주문번호, 결제 전 상태, 금액, 구매자 컨텍스트를 검증한다.
         const signDataUrl = window.location.origin + config.sign_data_url;
         const authToken = (typeof localStorage !== 'undefined') ? localStorage.getItem('auth_token') : null;
         const signDataHeaders: Record<string, string> = {
@@ -226,7 +223,12 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
             method: 'POST',
             credentials: 'include',
             headers: signDataHeaders,
-            body: JSON.stringify({ amt: pgPaymentData.amount, moid: pgPaymentData.order_number }),
+            body: JSON.stringify({
+                amt: pgPaymentData.amount,
+                moid: pgPaymentData.order_number,
+                buyer_email: pgPaymentData.customer_email ?? '',
+                buyer_phone: pgPaymentData.customer_phone ?? '',
+            }),
         });
 
         if (!signDataRes.ok) {

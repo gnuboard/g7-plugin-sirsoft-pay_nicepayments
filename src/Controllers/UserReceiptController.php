@@ -7,13 +7,20 @@ namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\Sirsoft\Ecommerce\Services\GuestOrderAuthService;
+use Plugins\Sirsoft\PayNicepayments\Concerns\IssuesReceiptCookie;
 use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
 
 class UserReceiptController
 {
+    use IssuesReceiptCookie;
     use ResolvesEasyPayDisplay;
 
     private const RECEIPT_BASE_URL = 'https://npg.nicepay.co.kr/issue/IssueLoader.do';
+
+    public function __construct(
+        private readonly GuestOrderAuthService $guestOrderAuthService,
+    ) {}
 
     /**
      * 사용자 마이페이지 영수증 정보 조회
@@ -22,18 +29,36 @@ class UserReceiptController
      * receipt_url 이 비어있으면 transaction_id 로 NicePay IssueLoader URL 을 동적 생성.
      * 테스트 모드 결제는 is_test_mode=true 플래그로 표시되어 UI 에서 안내 가능.
      *
-     * @param  Request  $request  인증된 사용자 요청
+     * @param  Request  $request  회원 또는 비회원 영수증 요청
      * @param  string  $orderNumber  주문번호
      * @return JsonResponse receipt_url / cash_receipt_url / is_test_mode 또는 404
      */
     public function show(Request $request, string $orderNumber): JsonResponse
     {
         $user = $request->user();
-
-        $payment = DB::table('ecommerce_order_payments as p')
+        $query = DB::table('ecommerce_order_payments as p')
             ->join('ecommerce_orders as o', 'o.id', '=', 'p.order_id')
             ->where('o.order_number', $orderNumber)
-            ->where('o.user_id', $user->id)
+            ->where('p.pg_provider', 'nicepayments');
+
+        if ($user) {
+            $query->where('o.user_id', $user->id);
+        } else {
+            $order = $this->guestOrderAuthService->verifyToken($request->header('X-Guest-Order-Token'), $orderNumber);
+
+            if ($order) {
+                $query->whereNull('o.user_id')->where('o.id', $order->id);
+            } elseif ($this->verifyReceiptCookie($request->cookie(self::RECEIPT_COOKIE_NAME), $orderNumber)) {
+                $query->whereNull('o.user_id')
+                    ->where('o.id', function ($sub) use ($orderNumber) {
+                        $sub->select('id')->from('ecommerce_orders')->where('order_number', $orderNumber);
+                    });
+            } else {
+                return response()->json(['error' => 'Not found'], 404);
+            }
+        }
+
+        $payment = $query
             ->select([
                 'p.transaction_id',
                 'p.receipt_url',

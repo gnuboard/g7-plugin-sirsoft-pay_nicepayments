@@ -4,9 +4,11 @@ namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
 use App\Extension\HookManager;
 use App\Models\User;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Mockery;
+use Modules\Sirsoft\Ecommerce\Database\Factories\OrderAddressFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderOptionFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderPaymentFactory;
@@ -203,6 +205,47 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
         $response->assertStatus(422)
             ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_amount'));
+    }
+
+    public function test_sign_data_rejects_buyer_mismatch(): void
+    {
+        $order = $this->createTestOrder(50000);
+        OrderAddressFactory::new()->forOrder($order)->shipping()->create([
+            'orderer_email' => 'buyer@example.com',
+            'orderer_phone' => '010-1234-5678',
+        ]);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+            'buyer_email' => 'attacker@example.com',
+            'buyer_phone' => '01099999999',
+        ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+    }
+
+    public function test_sign_data_is_rate_limited_by_order_and_ip(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        RateLimiter::clear('sirsoft-pay_nicepayments:sign-data:'.sha1('127.0.0.1|'.$order->order_number));
+
+        for ($i = 0; $i < 20; $i++) {
+            $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+                'amt' => 50000,
+                'moid' => $order->order_number,
+            ])->assertOk();
+        }
+
+        $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ])->assertStatus(429)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
     }
 
     public function test_sign_data_rejects_unchargeable_payment_currency(): void

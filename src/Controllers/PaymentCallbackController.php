@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Exceptions\PaymentAmountMismatchException;
@@ -23,6 +24,7 @@ use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\PreventsReplayCallback;
+use Plugins\Sirsoft\PayNicepayments\Concerns\IssuesReceiptCookie;
 use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
 use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
 use Plugins\Sirsoft\PayNicepayments\Concerns\SanitizesPgResponse;
@@ -41,6 +43,7 @@ use Plugins\Sirsoft\PayNicepayments\Support\UrlHelper;
 class PaymentCallbackController
 {
     use PreventsReplayCallback;
+    use IssuesReceiptCookie;
     use RecordsPaymentWindowClosure;
     use ResolvesEasyPayDisplay;
     use SanitizesPgResponse;
@@ -199,6 +202,8 @@ class PaymentCallbackController
                 'ip' => $request->ip(),
             ]);
 
+            $this->queueReceiptCookie($moid);
+
             return redirect($this->resolveSuccessUrl($moid));
         }
         $this->cache->put($replayCacheKey, true, 60);
@@ -282,6 +287,7 @@ class PaymentCallbackController
                 $issueStatus = $this->recordVbankIssueWithLock($moid, $pgResponse, $resultCode, $payMethod, $isEscrow, $txTid);
                 if ($issueStatus === 'already_waiting') {
                     $this->logReplayDetected((string) ($pgResponse['TID'] ?? $txTid), $moid, 'authCallback (vbank issue)');
+                    $this->queueReceiptCookie($moid);
 
                     return redirect($this->resolveSuccessUrl($moid));
                 }
@@ -308,6 +314,7 @@ class PaymentCallbackController
 
                 if ($completionStatus === 'already_paid') {
                     $this->logReplayDetected($effectiveTid, $moid, 'authCallback (card)');
+                    $this->queueReceiptCookie($moid);
 
                     return redirect($this->resolveSuccessUrl($moid));
                 }
@@ -319,6 +326,7 @@ class PaymentCallbackController
                     ]);
 
                     $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
+                    $this->queueReceiptCookie($moid);
 
                     return redirect($this->resolveSuccessUrl($moid));
                 }
@@ -335,6 +343,8 @@ class PaymentCallbackController
                     return redirect($this->resolveFailUrl(['error' => 'order_not_payable', 'orderId' => $moid]));
                 }
             }
+
+            $this->queueReceiptCookie($moid);
 
             return redirect($this->resolveSuccessUrl($moid));
 
@@ -382,6 +392,7 @@ class PaymentCallbackController
             $approvedTid = $pgResponse['TID'] ?? $txTid;
             if ($this->wasAlreadyPaid((string) $approvedTid)) {
                 $this->logReplayDetected((string) $approvedTid, $moid, 'authCallback exception');
+                $this->queueReceiptCookie($moid);
 
                 return redirect($this->resolveSuccessUrl($moid));
             }
@@ -584,6 +595,12 @@ class PaymentCallbackController
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 400);
         }
 
+        $rateLimitKey = $this->signDataRateLimitKey($request, $moid);
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 20)) {
+            return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 429);
+        }
+        RateLimiter::hit($rateLimitKey, 60);
+
         // 주문 금액 검증: 클라이언트가 임의 금액으로 SignData를 요청하는 조작 방지
         $order = $this->orderService->findByOrderNumber($moid);
 
@@ -594,6 +611,15 @@ class PaymentCallbackController
             ]);
 
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.order_not_found')], 422);
+        }
+
+        if (! $this->requestMatchesOrderBuyer($request, $order)) {
+            Log::warning('NicePayments: SignData buyer verification failed', [
+                'moid' => $moid,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 403);
         }
 
         $payment = $order->payment()->first();
@@ -665,6 +691,11 @@ class PaymentCallbackController
             'signData' => $signData,
             'mid' => $mid,
         ]);
+    }
+
+    private function signDataRateLimitKey(Request $request, string $moid): string
+    {
+        return 'sirsoft-pay_nicepayments:sign-data:'.sha1($request->ip().'|'.$moid);
     }
 
     /**

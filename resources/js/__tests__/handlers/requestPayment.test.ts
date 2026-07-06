@@ -13,6 +13,8 @@ const PG_PAYMENT = {
     order_number: 'ORD-001',
     order_name: 'Test Order',
     amount: 10000,
+    customer_email: 'buyer@example.com',
+    customer_phone: '01012345678',
 };
 
 describe('requestPaymentHandler', () => {
@@ -226,6 +228,21 @@ describe('requestPaymentHandler', () => {
 
             expect(submitSpy).toHaveBeenCalledTimes(1);
             expect(getSubmittedPayMethod()).toBe('CARD');
+        });
+
+        it('SignData 요청은 주문자 이메일과 전화번호를 함께 전송', async () => {
+            await requestPaymentHandler({
+                params: { pgPaymentData: PG_PAYMENT, paymentMethod: 'card' },
+            });
+
+            expect(fetchSpy).toHaveBeenCalledTimes(1);
+            const [, init] = fetchSpy.mock.calls[0];
+            expect(JSON.parse(String(init?.body))).toEqual({
+                amt: PG_PAYMENT.amount,
+                moid: PG_PAYMENT.order_number,
+                buyer_email: PG_PAYMENT.customer_email,
+                buyer_phone: PG_PAYMENT.customer_phone,
+            });
         });
 
         it("paymentMethod 미명시 시 _local.paymentMethod 로 fallback", async () => {

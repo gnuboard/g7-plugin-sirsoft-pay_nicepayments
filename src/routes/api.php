@@ -23,10 +23,9 @@ use Plugins\Sirsoft\PayNicepayments\Controllers\UserReceiptController;
 Route::post('/payment/close-report', [PaymentCloseReportController::class, 'store'])
     ->name('payment.close-report');
 
-Route::middleware(['auth:sanctum'])->group(function () {
-    Route::get('/user/orders/{orderNumber}/receipt', [UserReceiptController::class, 'show'])
-        ->name('user.orders.receipt');
-});
+Route::get('/user/orders/{orderNumber}/receipt', [UserReceiptController::class, 'show'])
+    ->middleware('optional.sanctum')
+    ->name('user.orders.receipt');
 
 Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', 'admin'])->group(function () {
     // 가상계좌 입금통보 URL 조회 (관리자 설정 페이지 표시용)
