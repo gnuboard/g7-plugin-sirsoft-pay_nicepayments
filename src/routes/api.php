@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminEscrowController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminOrderListController;
+use Plugins\Sirsoft\PayNicepayments\Controllers\AdminSettingsStatusController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminTransactionController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminVbankNotificationController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminVbankRefundController;
@@ -38,6 +39,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', 'admin'])->g
         ]);
     })->middleware('permission:admin,sirsoft-ecommerce.settings.read')
         ->name('vbank.notify.url');
+
+    Route::get('/settings/test-mode-status', [AdminSettingsStatusController::class, 'testMode'])
+        ->middleware('permission:admin,sirsoft-ecommerce.settings.read')
+        ->name('settings.test-mode-status');
 
     // TID 단건 거래 조회
     Route::post('/transaction/query', [AdminTransactionController::class, 'query'])

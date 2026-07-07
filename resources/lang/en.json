@@ -4,6 +4,7 @@
             "nicepay_easy_pay_config": "Easy Pay Config",
             "nicepay_escrow": "Escrow",
             "nicepay_status": "Payment Status",
+            "nicepay_test_mode_status": "Test Mode Status",
             "nicepay_test_map": "Test Payment Map",
             "settings": "Payment Settings",
             "vbank_info": "Virtual Account Info"
@@ -109,6 +110,10 @@
         "escrow_register_error": "Failed to register escrow delivery.",
         "test_mode_badge": "TEST",
         "test_mode_order_notice": "This order was processed in test mode. Real card authorization/withdrawal notifications may occur, but NicePayments test account payments are batch-cancelled around 23:30 on the same day. Verify live payment status before shipping.",
+        "test_mode_settings_warning_plugin": "NicePayments",
+        "test_mode_settings_warning_title": "Warning: NicePayments is currently set to test mode.",
+        "test_mode_settings_warning_body": "Test payments do not create real payments. If the shop is live, switch this plugin to live payment mode before operating.",
+        "test_mode_settings_warning_action": "Switch to live mode",
         "test_mode_orders_in_list": "Test payment orders included"
     },
     "easy_pay": {
