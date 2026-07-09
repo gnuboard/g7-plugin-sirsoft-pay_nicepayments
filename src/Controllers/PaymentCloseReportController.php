@@ -8,6 +8,7 @@ use App\Helpers\ResponseHelper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
@@ -129,12 +130,14 @@ class PaymentCloseReportController
             $payment = $lockedOrder->payment()->lockForUpdate()->first();
             $lockedOrder->setRelation('payment', $payment);
 
-            // 결제 성공 콜백과 결제창 닫힘 보고가 경쟁할 때, 카드 주문은 승인 직전까지
-            // order_status=PENDING_ORDER(=isBeforePayment) 라 위 가드를 통과한다. payment_status 가
-            // 이미 PAID 면 결제가 성공한 것이므로 실패 처리하지 않는다(markPaymentWindowClosed 가
-            // 옵션을 취소로 덮어 주문/옵션 상태가 어긋나는 race 차단). 행 락 획득 직후 재확인한다.
+            // close-report 는 결제창이 승인/발급 단계로 넘어가기 전 READY 상태만 실패 처리한다.
+            // 카드 승인 콜백과 경쟁해 PAID 가 먼저 저장됐거나, 가상계좌 발급으로 WAITING_DEPOSIT 이
+            // 된 주문은 닫힘 보고가 뒤늦게 도착해도 주문/결제 상태를 덮으면 안 된다.
             if ($payment?->isPaid()) {
                 return ['status' => 'ignored', 'reason' => 'payment_already_paid'];
+            }
+            if (! $payment || $payment->payment_status !== PaymentStatusEnum::READY) {
+                return ['status' => 'ignored', 'reason' => 'payment_not_ready'];
             }
 
             $expectedPrice = $this->resolveExpectedPaymentPriceOrNull($lockedOrder, 'close_report_locked', [
