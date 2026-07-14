@@ -19,6 +19,9 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
 
     private const TEST_MODE_NOTICE_ROW_ID = 'nicepay_test_mode_order_settings_notice';
 
+    /** 주문설정 탭이 활성일 때만 fetch (탭별 지연 로딩) */
+    private const ORDER_SETTINGS_TAB_CONDITION = "{{(query.tab || _global.activeEcommerceSettingsTab || 'basic_info') === 'order_settings'}}";
+
     private const TEST_MODE_CONDITION = 'nicepay_test_mode_status.data?.is_test_mode === true';
 
     private const CORE_NO_PG_METHODS = ['point', 'deposit', 'free', 'dbank'];
@@ -35,7 +38,9 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     ];
 
     /**
-     * @return array<string, array<string, mixed>>
+     * 이 리스너가 구독하는 훅 정의를 반환합니다.
+     *
+     * @return array<string, array<string, mixed>> 훅 이름 => 구독 설정
      */
     public static function getSubscribedHooks(): array
     {
@@ -49,14 +54,16 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @param mixed ...$args
+     * @param  mixed  ...$args
      */
     public function handle(...$args): void {}
 
     /**
-     * @param array<string, mixed> $layout
-     * @param int $templateId
-     * @return array<string, mixed>
+     * 이커머스 결제수단 설정 레이아웃에 나이스페이먼츠 간편결제를 PG 선택 불필요 항목으로 반영합니다.
+     *
+     * @param  array<string, mixed>  $layout  대상 레이아웃 정의
+     * @param  int  $templateId  레이아웃이 속한 템플릿 ID
+     * @return array<string, mixed> 보정된 레이아웃 정의
      */
     public function markEasyPayMethodsAsPgNotRequired(array $layout, int $templateId): array
     {
@@ -70,14 +77,17 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @param array<string, mixed> $node
-     * @return array<string, mixed>
+     * 레이아웃 노드를 재귀 순회하며 PG 불필요 결제수단 표현식에 나이스페이먼츠 간편결제를 추가합니다.
+     *
+     * @param  array<string, mixed>  $node  순회 대상 노드
+     * @return array<string, mixed> 치환이 반영된 노드
      */
     private function replaceNoPgMethodExpressions(array $node): array
     {
         foreach ($node as $key => $value) {
             if (is_array($value)) {
                 $node[$key] = $this->replaceNoPgMethodExpressions($value);
+
                 continue;
             }
 
@@ -89,6 +99,12 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
         return $node;
     }
 
+    /**
+     * 코어 PG 불필요 결제수단 배열 표현식을 찾아 나이스페이먼츠 간편결제 수단을 덧붙입니다.
+     *
+     * @param  string  $expression  대상 표현식
+     * @return string 나이스페이먼츠 수단이 추가된 표현식 (대상이 아니면 원본 그대로)
+     */
     private function addNicepayMethodsToNoPgArray(string $expression): string
     {
         return preg_replace_callback(
@@ -109,15 +125,17 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
                     }
                 }
 
-                return "['" . implode("','", $ids) . "'].includes(\$method.id)";
+                return "['".implode("','", $ids)."'].includes(\$method.id)";
             },
             $expression
         ) ?? $expression;
     }
 
     /**
-     * @param array<string, mixed> $layout
-     * @return array<string, mixed>
+     * 테스트 모드 경고에 필요한 데이터 소스와 안내 노드를 레이아웃에 보장합니다.
+     *
+     * @param  array<string, mixed>  $layout  대상 레이아웃 정의
+     * @return array<string, mixed> 경고가 보장된 레이아웃 정의
      */
     private function ensureTestModeWarning(array $layout): array
     {
@@ -127,8 +145,10 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @param array<string, mixed> $layout
-     * @return array<string, mixed>
+     * 테스트 모드 상태 조회 데이터 소스가 없으면 레이아웃에 추가합니다.
+     *
+     * @param  array<string, mixed>  $layout  대상 레이아웃 정의
+     * @return array<string, mixed> 데이터 소스가 보장된 레이아웃 정의
      */
     private function ensureTestModeDataSource(array $layout): array
     {
@@ -148,6 +168,7 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
             'type' => 'api',
             'endpoint' => '/api/plugins/sirsoft-pay_nicepayments/admin/settings/test-mode-status',
             'method' => 'GET',
+            'if' => self::ORDER_SETTINGS_TAB_CONDITION,
             'auto_fetch' => true,
             'auth_required' => true,
         ];
@@ -158,8 +179,10 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @param array<string, mixed> $node
-     * @return array<string, mixed>
+     * 주문설정 탭을 찾아 테스트 모드 안내 노드를 삽입합니다.
+     *
+     * @param  array<string, mixed>  $node  순회 대상 노드
+     * @return array<string, mixed> 안내 노드가 삽입된 노드
      */
     private function insertTestModeNotice(array $node): array
     {
@@ -191,7 +214,11 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @param array<int, mixed> $children
+     * 자식 노드 목록에서 지정한 id 를 가진 노드의 인덱스를 찾습니다.
+     *
+     * @param  array<int, mixed>  $children  자식 노드 목록
+     * @param  string  $id  찾을 노드 id
+     * @return int|null 찾은 인덱스 (없으면 null)
      */
     private function findChildIndexById(array $children, string $id): ?int
     {
@@ -205,17 +232,27 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @param array<int, mixed> $children
+     * 자식 노드 목록에 지정한 id 를 가진 노드가 있는지 확인합니다.
+     *
+     * @param  array<int, mixed>  $children  자식 노드 목록
+     * @param  string  $id  확인할 노드 id
+     * @return bool 존재 여부
      */
     private function hasChildWithId(array $children, string $id): bool
     {
         return $this->findChildIndexById($children, $id) !== null;
     }
 
+    /**
+     * 기존 표시 조건에 테스트 모드 조건을 OR 로 병합합니다.
+     *
+     * @param  string  $condition  기존 표시 조건식
+     * @return string 테스트 모드 조건이 병합된 조건식
+     */
     private function mergeTestModeCondition(string $condition): string
     {
         if (str_contains($condition, self::TEST_MODE_CONDITION)) {
-            return $condition !== '' ? $condition : '{{' . self::TEST_MODE_CONDITION . '}}';
+            return $condition !== '' ? $condition : '{{'.self::TEST_MODE_CONDITION.'}}';
         }
 
         $inner = trim($condition);
@@ -224,15 +261,17 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
         }
 
         if ($inner === '') {
-            return '{{' . self::TEST_MODE_CONDITION . '}}';
+            return '{{'.self::TEST_MODE_CONDITION.'}}';
         }
 
-        return '{{' . $inner . ' || ' . self::TEST_MODE_CONDITION . '}}';
+        return '{{'.$inner.' || '.self::TEST_MODE_CONDITION.'}}';
     }
 
     /**
-     * @param array<string, mixed> $notice
-     * @return array<string, mixed>
+     * 안내 컨테이너에 나이스페이먼츠 테스트 모드 안내 행을 중복 없이 추가합니다.
+     *
+     * @param  array<string, mixed>  $notice  안내 컨테이너 노드
+     * @return array<string, mixed> 안내 행이 추가된 컨테이너 노드
      */
     private function appendTestModeNoticeRow(array $notice): array
     {
@@ -248,7 +287,9 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @return array<string, mixed>
+     * 테스트 모드 안내를 감싸는 컨테이너 노드 정의를 반환합니다.
+     *
+     * @return array<string, mixed> 컨테이너 노드 정의
      */
     private function testModeNoticeContainerNode(): array
     {
@@ -256,7 +297,7 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
             'id' => self::TEST_MODE_NOTICE_ID,
             'type' => 'basic',
             'name' => 'Div',
-            'if' => '{{' . self::TEST_MODE_CONDITION . '}}',
+            'if' => '{{'.self::TEST_MODE_CONDITION.'}}',
             'props' => [
                 'className' => 'mb-4 space-y-3 rounded-lg border border-orange-200 bg-orange-50 p-4 dark:border-orange-700 dark:bg-orange-900/20',
             ],
@@ -267,7 +308,9 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
     }
 
     /**
-     * @return array<string, mixed>
+     * 나이스페이먼츠 테스트 모드 안내 문구와 설정 이동 버튼으로 구성된 행 노드 정의를 반환합니다.
+     *
+     * @return array<string, mixed> 안내 행 노드 정의
      */
     private function testModeNoticeRowNode(): array
     {
@@ -275,7 +318,7 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
             'id' => self::TEST_MODE_NOTICE_ROW_ID,
             'type' => 'basic',
             'name' => 'Div',
-            'if' => '{{' . self::TEST_MODE_CONDITION . '}}',
+            'if' => '{{'.self::TEST_MODE_CONDITION.'}}',
             'props' => [
                 'className' => 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
             ],
@@ -322,11 +365,11 @@ class AdjustEcommercePaymentMethodsLayoutListener implements HookListenerInterfa
                         ],
                     ],
                     'children' => [
-                                [
-                                    'type' => 'basic',
-                                    'name' => 'Span',
-                                    'text' => '$t:sirsoft-pay_nicepayments.admin.test_mode_settings_warning_action',
-                                ],
+                        [
+                            'type' => 'basic',
+                            'name' => 'Span',
+                            'text' => '$t:sirsoft-pay_nicepayments.admin.test_mode_settings_warning_action',
+                        ],
                     ],
                 ],
             ],

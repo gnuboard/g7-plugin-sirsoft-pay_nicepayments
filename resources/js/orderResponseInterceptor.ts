@@ -23,6 +23,9 @@ const CHECKOUT_ENDPOINT_PATH = '/api/modules/sirsoft-ecommerce/checkout';
 const PAYMENT_IN_PROGRESS_FLAG = '__sirsoftNicepayPaymentInProgress';
 const CHECKOUT_CACHE_KEY = '__sirsoftNicepayCheckoutCache';
 
+/** 체크아웃 페이지 경로 (캐시 프리페치를 이 경로에서만 수행) */
+const CHECKOUT_ROUTE_RE = /^\/shop\/checkout\/?$/;
+
 const logger = {
     info: (...args: unknown[]) => console.info(`[${PLUGIN_IDENTIFIER}]`, ...args),
     warn: (...args: unknown[]) => console.warn(`[${PLUGIN_IDENTIFIER}]`, ...args),
@@ -43,6 +46,11 @@ function isCheckoutEndpoint(url: string, method: string): boolean {
     if (method.toUpperCase() !== 'GET') return false;
     const path = (url ?? '').split('?')[0].split('#')[0];
     return path === CHECKOUT_ENDPOINT_PATH || path.endsWith(CHECKOUT_ENDPOINT_PATH);
+}
+
+/** 현재 브라우저 경로가 체크아웃 페이지인지 판정한다. */
+function isCheckoutRoute(): boolean {
+    return CHECKOUT_ROUTE_RE.test(window.location.pathname);
 }
 
 function extractPaymentMethodFromBody(body: unknown): string | undefined {
@@ -311,7 +319,12 @@ function tryInstallAxiosCheckoutInterceptor(w: Record<string, unknown>, retries:
     logger.info('axios checkout interceptor installed');
 
     // 인터셉터 설치 직후 GET checkout 즉시 캐싱 — navigate-to-self 재초기화 대비
-    if (!w[CHECKOUT_CACHE_KEY]) {
+    //
+    // 체크아웃 페이지에서만 수행한다. 플러그인 번들은 모든 페이지에 로드되므로 경로를
+    // 가리지 않으면 홈/게시판/로그인 등 어디서나 이 요청이 나가고, 장바구니가 없는
+    // 비회원은 매 페이지 422(cart_key_required)를 받는다. 캐시는 체크아웃 페이지의
+    // navigate-to-self 재초기화 대비용이므로 다른 경로에서는 만들 이유가 없다.
+    if (isCheckoutRoute() && !w[CHECKOUT_CACHE_KEY]) {
         void (async () => {
             try {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any

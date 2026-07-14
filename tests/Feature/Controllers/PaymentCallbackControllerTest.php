@@ -4,9 +4,10 @@ namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
 use App\Extension\HookManager;
 use App\Models\User;
-use Illuminate\Support\Facades\RateLimiter;
+use App\Services\PluginSettingsService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Mockery;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderAddressFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderFactory;
@@ -21,6 +22,21 @@ use Plugins\Sirsoft\PayNicepayments\Tests\PluginTestCase;
 class PaymentCallbackControllerTest extends PluginTestCase
 {
     private const TEST_MID = 'nicepay00m';
+
+    /**
+     * 애플리케이션 로그를 spy 로 감시하되 `activity` 채널은 실제 로거로 유지합니다.
+     *
+     * `Log::spy()` 단독 사용 시 `Log::channel('activity')` 가 null 을 반환하고,
+     * 결제 완료 훅이 태우는 활동 로그가 null 에 `info()` 를 호출해 \Error 로 죽는다.
+     * (`ResolvesActivityLogType::logActivity` 의 catch 는 \Exception 만 잡아 통과시킴)
+     */
+    private function spyApplicationLogKeepingActivityChannel(): void
+    {
+        $activityChannel = Log::channel('activity');
+
+        Log::spy();
+        Log::shouldReceive('channel')->with('activity')->andReturn($activityChannel);
+    }
 
     private const TEST_MERCHANT_KEY = 'EYzu8jGGMfqaDEp76gSckuvnaHHu+bC4opsSN6lHv3b2lurNYkVXrZ7Z1AoqQnXI3eLuaUFyoRNC6FkrzVjceg==';
 
@@ -49,7 +65,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
         $order = OrderFactory::new()->create([
             'user_id' => $user->id,
-            'order_number' => 'ORD-TEST-' . random_int(10000, 99999),
+            'order_number' => 'ORD-TEST-'.random_int(10000, 99999),
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'subtotal_amount' => $totalAmount,
             'total_discount_amount' => 0,
@@ -96,28 +112,28 @@ class PaymentCallbackControllerTest extends PluginTestCase
             'redirect_fail_url' => '/shop/checkout',
         ];
 
-        $settingsMock = $this->createMock(\App\Services\PluginSettingsService::class);
+        $settingsMock = $this->createMock(PluginSettingsService::class);
         $settingsMock->method('get')
             ->willReturn(array_merge($defaults, $overrides));
 
-        $this->app->instance(\App\Services\PluginSettingsService::class, $settingsMock);
+        $this->app->instance(PluginSettingsService::class, $settingsMock);
     }
 
     private function makeSignature(string $authToken, string $mid, int $amt, string $merchantKey): string
     {
-        return bin2hex(hash('sha256', $authToken . $mid . (string) $amt . $merchantKey, true));
+        return bin2hex(hash('sha256', $authToken.$mid.(string) $amt.$merchantKey, true));
     }
 
     private function makeCallbackParams(string $moid, int $amt, array $overrides = []): array
     {
-        $authToken = 'AUTH_TOKEN_' . uniqid();
+        $authToken = 'AUTH_TOKEN_'.uniqid();
         $signature = $this->makeSignature($authToken, self::TEST_MID, $amt, self::TEST_MERCHANT_KEY);
 
         return array_merge([
             'AuthResultCode' => '0000',
             'AuthResultMsg' => '성공',
             'NextAppURL' => 'https://pay.nicepay.co.kr/v1/authorize',
-            'TxTid' => 'TX_TID_' . uniqid(),
+            'TxTid' => 'TX_TID_'.uniqid(),
             'AuthToken' => $authToken,
             'PayMethod' => 'CARD',
             'MID' => self::TEST_MID,
@@ -135,7 +151,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
             'PayMethod' => 'VBANK',
             'MID' => self::TEST_MID,
             'MOID' => $moid,
-            'TID' => 'VBANK_TID_' . uniqid(),
+            'TID' => 'VBANK_TID_'.uniqid(),
             'Amt' => $amt,
             'ResultCode' => '4110',
             'ResultMsg' => '입금완료',
@@ -432,7 +448,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $order = $this->createTestOrder(50000);
         $this->mockPluginSettings();
 
-        $tid = 'TID_' . uniqid();
+        $tid = 'TID_'.uniqid();
         $params = $this->makeCallbackParams($order->order_number, 50000);
 
         Http::fake([
@@ -462,7 +478,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $order = $this->createTestOrder(50000);
         $this->mockPluginSettings();
 
-        $tid = 'TID_EASY_PAY_' . uniqid();
+        $tid = 'TID_EASY_PAY_'.uniqid();
         $params = $this->makeCallbackParams($order->order_number, 50000, [
             'MallReserved' => 'nicepay_easy_pay_method=nicepay_kakaopay',
             'MallReserved1' => 'nicepay_kakaopay',
@@ -1034,7 +1050,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
     public function test_vbank_notify_success_log_does_not_include_depositor_or_full_account(): void
     {
-        Log::spy();
+        $this->spyApplicationLogKeepingActivityChannel();
 
         $tid = 'VBANK_TID_LOG_SAFE';
         $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);
