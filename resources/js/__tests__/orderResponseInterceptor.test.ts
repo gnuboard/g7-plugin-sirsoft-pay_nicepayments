@@ -1,181 +1,104 @@
+/**
+ * 주문 생성 인터셉터 테스트 — 이슈 #475
+ *
+ * 확장 결제수단이 1급 시민이 되면서 인터셉터의 우회가 전부 제거됐다:
+ *   - payment_method 를 'card' 로 위장 (서버 검증이 확장 ID 를 422 로 막았기 때문)
+ *   - 응답의 requires_pg_payment / redirect_url 변조 (navigate-to-self 강제)
+ *   - pg_payment_data 재구성
+ *   - navigate-to-self 로 인한 "주문서 없음" 다이얼로그를 막기 위한 GET checkout 캐싱
+ *
+ * 위장이 서버로 하여금 간편결제 주문을 "PG 결제가 아닌 주문" 으로 오인하게 만들어
+ * (a) 결제 실패 시 관리자 알림 오발송 (b) 임시주문 삭제 → 재결제 불가 를 일으켰다.
+ *
+ * 이제 결제창 진입은 서버 응답의 pg_payment_handler 를 템플릿이 dispatch 하는 경로로
+ * 처리되고, 템플릿의 PG 분기는 navigate 를 하지 않으므로 캐싱도 불필요하다.
+ *
+ * 본 테스트는 인터셉터가 fetch 를 일절 건드리지 않음(no-op)을 회귀 방지로 고정한다.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installOrderResponseInterceptor } from '../orderResponseInterceptor';
-import { requestPaymentHandler } from '../handlers/requestPayment';
 
-vi.mock('../handlers/requestPayment', () => ({
-    requestPaymentHandler: vi.fn(),
-}));
-
-const requestPaymentMock = vi.mocked(requestPaymentHandler);
-
-function resetNicepayWindowFlags(): void {
-    const w = window as unknown as Record<string, unknown>;
-    delete w.__sirsoftNicepayFetchInterceptorInstalled;
-    delete w.__sirsoftPgOriginalFetch;
-    delete w.__sirsoftNicepayPaymentInProgress;
-    delete w.__sirsoftNicepayCheckoutCache;
-    delete w.__sirsoftNicepayAxiosCheckoutInterceptorInstalled;
-}
-
-/** 현재 경로를 지정한다 (jsdom 은 history API 로만 pathname 변경 가능) */
-function setPathname(pathname: string): void {
-    window.history.replaceState({}, '', pathname);
-}
-
-/**
- * G7Core.api 스파이를 설치하고 get 스파이를 반환한다.
- *
- * 캐시 프리페치는 tryInstallAxiosCheckoutInterceptor 안에 있고, 이 함수는
- * `G7Core.api.client`(Axios)가 준비될 때까지 재시도하다가 준비되면 프리페치한다.
- * 따라서 client(=interceptors 를 가진 객체)를 함께 제공해야 실제 경로를 탄다.
- */
-function installCoreApiSpy(): ReturnType<typeof vi.fn> {
-    const getSpy = vi.fn().mockResolvedValue({});
-    const axiosClient = {
-        interceptors: {
-            request: { use: vi.fn() },
-            response: { use: vi.fn() },
-        },
-    };
-    (window as unknown as Record<string, unknown>).G7Core = {
-        api: { get: getSpy, client: axiosClient },
-    };
-
-    return getSpy;
-}
-
-function buildOrderResponse(order: Record<string, unknown>): Response {
-    return new Response(JSON.stringify({
-        success: true,
-        data: {
-            order,
-            requires_pg_payment: false,
-            redirect_url: '/shop/orders/ORD-NICE-001/complete',
-        },
-    }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-    });
-}
+const ORDER_CREATE_URL = '/api/modules/sirsoft-ecommerce/user/orders';
+const CHECKOUT_URL = '/api/modules/sirsoft-ecommerce/checkout';
 
 describe('installOrderResponseInterceptor', () => {
-    let originalFetch: typeof window.fetch;
-    let fetchSpy: ReturnType<typeof vi.fn>;
-
     beforeEach(() => {
-        originalFetch = window.fetch;
-        fetchSpy = vi.fn();
-        (window as unknown as Record<string, unknown>).fetch = fetchSpy;
-        resetNicepayWindowFlags();
-        requestPaymentMock.mockClear();
+        window.history.replaceState({}, '', '/shop/checkout');
+        vi.spyOn(console, 'info').mockImplementation(() => {});
     });
 
     afterEach(() => {
-        window.fetch = originalFetch;
-        resetNicepayWindowFlags();
-        delete (window as unknown as Record<string, unknown>).G7Core;
-        setPathname('/');
         vi.restoreAllMocks();
     });
 
-    describe('체크아웃 캐시 프리페치 라우트 가드', () => {
-        // 플러그인 번들은 모든 페이지에 로드된다. 캐시 프리페치는 체크아웃 페이지의
-        // navigate-to-self 재초기화를 위한 것이므로, 다른 라우트에서 발화하면
-        // 비회원에게 무의미한 422(cart_key_required) 왕복만 발생시킨다.
-        it.each([
-            ['홈', '/'],
-            ['게시판', '/board'],
-            ['로그인', '/login'],
-            ['상품 상세', '/shop/products/1'],
-            ['장바구니', '/shop/cart'],
-        ])('%s 에서는 체크아웃을 프리페치하지 않는다', async (_label, pathname) => {
-            setPathname(pathname);
-            const getSpy = installCoreApiSpy();
-
-            installOrderResponseInterceptor();
-            await vi.waitFor(() => expect(true).toBe(true));
-
-            expect(getSpy).not.toHaveBeenCalled();
-        });
-
-        it('체크아웃 페이지에서는 캐시 프리페치가 동작한다', async () => {
-            setPathname('/shop/checkout');
-            const getSpy = installCoreApiSpy();
-
-            installOrderResponseInterceptor();
-
-            await vi.waitFor(() => {
-                expect(getSpy).toHaveBeenCalledWith('/modules/sirsoft-ecommerce/checkout');
-            });
-        });
-
-        it('이미 캐시가 있으면 체크아웃 페이지에서도 재요청하지 않는다', async () => {
-            setPathname('/shop/checkout');
-            (window as unknown as Record<string, unknown>).__sirsoftNicepayCheckoutCache =
-                JSON.stringify({ data: {} });
-            const getSpy = installCoreApiSpy();
-
-            installOrderResponseInterceptor();
-            await vi.waitFor(() => expect(true).toBe(true));
-
-            expect(getSpy).not.toHaveBeenCalled();
-        });
-    });
-
-    it('간편결제 fallback pg_payment_data 금액은 total_due_amount를 우선 사용', async () => {
-        fetchSpy.mockResolvedValue(buildOrderResponse({
-            order_number: 'ORD-NICE-001',
-            total_amount: '57000.00',
-            total_due_amount: '53000.00',
-            options: [{ product_name: '테스트 상품' }],
-            orderer_name: '홍길동',
-            orderer_email: 'buyer@example.com',
-            orderer_phone: '010-1234-5678',
-            user_id: 7,
-        }));
+    it('window.fetch 를 래핑하지 않는다 (no-op)', () => {
+        const originalFetch = vi.fn();
+        window.fetch = originalFetch as unknown as typeof fetch;
 
         installOrderResponseInterceptor();
 
-        await window.fetch('/api/modules/sirsoft-ecommerce/user/orders', {
-            method: 'POST',
-            body: JSON.stringify({ payment_method: 'nicepay_kakaopay' }),
-        });
-
-        expect(requestPaymentMock).toHaveBeenCalledWith({
-            params: {
-                pgPaymentData: expect.objectContaining({
-                    order_number: 'ORD-NICE-001',
-                    order_name: '테스트 상품',
-                    amount: 53000,
-                    customer_phone: '01012345678',
-                }),
-                paymentMethod: 'nicepay_kakaopay',
-            },
-        });
+        // 래핑하면 다른 함수 참조가 된다 — 동일 참조여야 한다.
+        expect(window.fetch).toBe(originalFetch);
     });
 
-    it('total_due_amount가 없는 구형 응답은 total_amount로 fallback', async () => {
-        fetchSpy.mockResolvedValue(buildOrderResponse({
-            order_number: 'ORD-NICE-002',
-            total_amount: '57000.00',
-            options: [{ product_name: '테스트 상품' }],
-        }));
+    it('주문 생성 요청의 payment_method 를 위장하지 않는다', async () => {
+        let sentBody = '';
+        window.fetch = vi.fn().mockImplementation(async (_input: unknown, init?: RequestInit) => {
+            sentBody = String(init?.body ?? '');
+            return new Response('{}', { status: 200 });
+        }) as unknown as typeof fetch;
 
         installOrderResponseInterceptor();
 
-        await window.fetch('/api/modules/sirsoft-ecommerce/user/orders', {
+        await window.fetch(ORDER_CREATE_URL, {
             method: 'POST',
             body: JSON.stringify({ payment_method: 'nicepay_naverpay' }),
         });
 
-        expect(requestPaymentMock).toHaveBeenCalledWith({
-            params: {
-                pgPaymentData: expect.objectContaining({
-                    order_number: 'ORD-NICE-002',
-                    amount: 57000,
-                }),
-                paymentMethod: 'nicepay_naverpay',
+        expect(JSON.parse(sentBody).payment_method).toBe('nicepay_naverpay');
+    });
+
+    it('주문 생성 응답을 변조하지 않는다', async () => {
+        const serverBody = {
+            success: true,
+            data: {
+                order: { order_number: 'ORD-1' },
+                redirect_url: '/shop/orders/ORD-1/complete',
+                requires_pg_payment: true,
+                pg_provider: 'sirsoft-nicepayments',
+                pg_payment_handler: 'sirsoft-pay_nicepayments.requestPayment',
             },
-        });
+        };
+        window.fetch = vi.fn().mockResolvedValue(
+            new Response(JSON.stringify(serverBody), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        ) as unknown as typeof fetch;
+
+        installOrderResponseInterceptor();
+
+        const response = await window.fetch(ORDER_CREATE_URL, { method: 'POST', body: '{}' });
+        const body = await response.json();
+
+        expect(body.data.requires_pg_payment).toBe(true);
+        expect(body.data.redirect_url).toBe('/shop/orders/ORD-1/complete');
+        expect(body.data.pg_payment_handler).toBe('sirsoft-pay_nicepayments.requestPayment');
+    });
+
+    it('GET checkout 응답을 캐싱하거나 가로채지 않는다', async () => {
+        const checkoutResponse = new Response('{"data":{}}', { status: 200 });
+        const fetchSpy = vi.fn().mockResolvedValue(checkoutResponse);
+        window.fetch = fetchSpy as unknown as typeof fetch;
+
+        installOrderResponseInterceptor();
+
+        const first = await window.fetch(CHECKOUT_URL, { method: 'GET' });
+        const second = await window.fetch(CHECKOUT_URL, { method: 'GET' });
+
+        // 캐시 서빙이 부활하면 두 번째 호출이 네트워크로 나가지 않는다.
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(first).toBe(checkoutResponse);
+        expect(second).toBe(checkoutResponse);
     });
 });

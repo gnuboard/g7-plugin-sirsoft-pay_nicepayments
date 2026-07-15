@@ -30,8 +30,7 @@ class AdminVbankNotificationController
 {
     public function __construct(
         private readonly OrderProcessingService $orderService
-    ) {
-    }
+    ) {}
 
     /**
      * 가상계좌 입금통보 이력 조회
@@ -55,7 +54,7 @@ class AdminVbankNotificationController
         }
 
         $payment = $order->payment;
-        if (! $payment || $payment->payment_method?->value !== 'vbank') {
+        if (! $payment || ! $payment->isVirtualAccount()) {
             return response()->json([
                 'success' => true,
                 'data' => ['notifications' => [], 'summary' => null],

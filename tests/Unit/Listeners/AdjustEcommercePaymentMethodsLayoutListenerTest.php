@@ -18,14 +18,18 @@ class AdjustEcommercePaymentMethodsLayoutListenerTest extends TestCase
             $hooks['core.layout_extension.after_apply']['type'] ?? null
         );
         $this->assertSame(
-            'markEasyPayMethodsAsPgNotRequired',
+            'adjustPaymentMethodsLayout',
             $hooks['core.layout_extension.after_apply']['method'] ?? null
         );
     }
 
-    public function test_marks_nicepay_easy_pay_methods_as_pg_not_required_in_admin_ecommerce_settings(): void
+    public function test_does_not_string_substitute_pg_branch_expressions(): void
     {
-        $listener = new AdjustEcommercePaymentMethodsLayoutListener();
+        // 코어 레이아웃은 이제 pg_locked / needs_pg 로 직접 분기한다(#475).
+        // 리스너가 표현식을 치환하면 코어의 분기 로직을 훼손하고, 플러그인이 여럿 설치되면
+        // 서로의 치환 결과 위에 누적 적용되어 충돌한다 (과거 이 테스트의 fixture 에
+        // kginicis / nhnkcp 의 ID 가 이미 섞여 있던 것이 그 증거다).
+        $listener = new AdjustEcommercePaymentMethodsLayoutListener;
 
         $layout = [
             'layout_name' => 'admin_ecommerce_settings',
@@ -33,38 +37,26 @@ class AdjustEcommercePaymentMethodsLayoutListenerTest extends TestCase
                 [
                     'type' => 'basic',
                     'name' => 'Select',
-                    'if' => "{{!['point','deposit','free','dbank'].includes(\$method.id) && (_local.form?.available_pg_providers ?? []).length > 0}}",
-                ],
-                [
-                    'type' => 'composite',
-                    'name' => 'Toggle',
-                    'props' => [
-                        'disabled' => "{{_computed.isReadOnly || !['point','deposit','free','dbank','kginicis_naverpay','nhnkcp_payco'].includes(\$method.id) && !\$method.pg_provider && !_local.form?.order_settings?.default_pg_provider}}",
-                    ],
+                    'if' => '{{!$method.pg_locked && $method.needs_pg && (_local.form?.available_pg_providers ?? []).length > 0}}',
                 ],
             ],
         ];
 
-        $result = $listener->markEasyPayMethodsAsPgNotRequired($layout, 1);
+        $result = $listener->adjustPaymentMethodsLayout($layout, 1);
         $json = json_encode($result, JSON_UNESCAPED_SLASHES);
 
         $this->assertIsString($json);
-        $this->assertStringContainsString('kginicis_naverpay', $json);
-        $this->assertStringContainsString('nhnkcp_payco', $json);
-        $this->assertStringContainsString('nicepay_naverpay', $json);
-        $this->assertStringContainsString('nicepay_kakaopay', $json);
-        $this->assertStringContainsString('nicepay_samsungpay', $json);
-        $this->assertStringContainsString('nicepay_applepay', $json);
-        $this->assertStringContainsString('nicepay_payco', $json);
-        $this->assertStringContainsString('nicepay_skpay', $json);
-        $this->assertStringContainsString('nicepay_ssgpay', $json);
-        $this->assertStringContainsString('nicepay_lpay', $json);
-        $this->assertStringNotContainsString("['point','deposit','free','dbank'].includes", $json);
+        // 코어 분기 표현식이 그대로 보존되어야 한다.
+        $this->assertStringContainsString('$method.pg_locked', $json);
+        $this->assertStringContainsString('$method.needs_pg', $json);
+        // 간편결제 ID 를 표현식에 끼워 넣지 않는다.
+        $this->assertStringNotContainsString('nicepay_naverpay', $json);
+        $this->assertStringNotContainsString('nicepay_kakaopay', $json);
     }
 
     public function test_adds_test_mode_warning_to_order_settings_tab(): void
     {
-        $listener = new AdjustEcommercePaymentMethodsLayoutListener();
+        $listener = new AdjustEcommercePaymentMethodsLayoutListener;
 
         $layout = [
             'layout_name' => 'admin_ecommerce_settings',
@@ -79,8 +71,8 @@ class AdjustEcommercePaymentMethodsLayoutListenerTest extends TestCase
             ],
         ];
 
-        $result = $listener->markEasyPayMethodsAsPgNotRequired($layout, 1);
-        $result = $listener->markEasyPayMethodsAsPgNotRequired($result, 1);
+        $result = $listener->adjustPaymentMethodsLayout($layout, 1);
+        $result = $listener->adjustPaymentMethodsLayout($result, 1);
         $json = json_encode($result, JSON_UNESCAPED_SLASHES);
 
         $this->assertIsString($json);
@@ -103,7 +95,7 @@ class AdjustEcommercePaymentMethodsLayoutListenerTest extends TestCase
 
     public function test_leaves_other_layouts_unchanged(): void
     {
-        $listener = new AdjustEcommercePaymentMethodsLayoutListener();
+        $listener = new AdjustEcommercePaymentMethodsLayoutListener;
 
         $layout = [
             'layout_name' => 'shop/checkout',
@@ -114,6 +106,6 @@ class AdjustEcommercePaymentMethodsLayoutListenerTest extends TestCase
             ],
         ];
 
-        $this->assertSame($layout, $listener->markEasyPayMethodsAsPgNotRequired($layout, 1));
+        $this->assertSame($layout, $listener->adjustPaymentMethodsLayout($layout, 1));
     }
 }

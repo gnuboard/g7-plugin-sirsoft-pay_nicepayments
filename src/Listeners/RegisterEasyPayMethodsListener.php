@@ -15,6 +15,11 @@ class RegisterEasyPayMethodsListener implements HookListenerInterface
 {
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
 
+    /**
+     * 이 플러그인이 제공하는 PG 식별자 (RegisterPgProviderListener 의 provider id 와 일치).
+     */
+    private const PG_PROVIDER_ID = 'nicepayments';
+
     private const EASY_PAY_METHODS = [
         [
             'id' => 'nicepay_naverpay',
@@ -81,12 +86,12 @@ class RegisterEasyPayMethodsListener implements HookListenerInterface
     }
 
     /**
-     * @param mixed ...$args
+     * @param  mixed  ...$args
      */
     public function handle(...$args): void {}
 
     /**
-     * @param array<int, array<string, mixed>> $methods
+     * @param  array<int, array<string, mixed>>  $methods
      * @return array<int, array<string, mixed>>
      */
     public function injectEasyPayMethods(array $methods): array
@@ -120,7 +125,7 @@ class RegisterEasyPayMethodsListener implements HookListenerInterface
     }
 
     /**
-     * @param array<int, array<string, mixed>> $methods
+     * @param  array<int, array<string, mixed>>  $methods
      */
     private function resolveInsertionIndex(array $methods): ?int
     {
@@ -165,12 +170,19 @@ class RegisterEasyPayMethodsListener implements HookListenerInterface
                 'en' => __($descriptionKey, [], 'en'),
             ],
             'icon' => $icon,
-            'source' => 'plugin:' . self::PLUGIN_IDENTIFIER,
+            'source' => 'plugin:'.self::PLUGIN_IDENTIFIER,
             'defaults' => [
-                'pg_provider' => null,
+                // 간편결제는 나이스페이먼츠 결제창을 통해서만 처리되므로 PG 를 자기 자신으로 고정한다.
+                // null 로 두면 코어가 PG 없는 결제수단으로 오인해 결제 실패 주문에 관리자 알림이
+                // 발송되고 임시주문이 삭제되어 재결제가 막힌다(#475).
+                'pg_provider' => self::PG_PROVIDER_ID,
+                'pg_locked' => true,
+                'needs_pg' => true,
+                'refund_method' => 'pg',
                 'is_active' => false,
                 'min_order_amount' => 0,
                 'stock_deduction_timing' => 'payment_complete',
+                'mileage_deduction_timing' => 'payment_complete',
             ],
         ];
     }

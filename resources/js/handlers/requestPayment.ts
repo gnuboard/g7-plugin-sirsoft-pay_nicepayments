@@ -38,6 +38,11 @@ interface PgPaymentData {
     order_name: string;
     amount: number;
     currency?: string;
+    /**
+     * 서버가 저장한 결제수단 ID — 확장 수단이면 확장 ID 그대로(예: 'nicepay_naverpay').
+     * 확장 결제수단이 1급 시민이 되면서 서버가 원본 수단을 알고 내려준다(#475).
+     */
+    payment_method?: string;
     customer_name?: string;
     customer_email?: string;
     customer_phone?: string;
@@ -175,7 +180,11 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
     const { pgPaymentData, paymentMethod: paramPaymentMethod } = action.params ?? {};
 
     const localState = window.__templateApp?.globalState?._local;
-    const paymentMethod = paramPaymentMethod ?? localState?.paymentMethod ?? 'card';
+    // 서버가 저장한 결제수단(payment_method)이 SSoT — 확장 수단이면 확장 ID 가 그대로 온다(#475).
+    const paymentMethod = paramPaymentMethod
+        ?? pgPaymentData?.payment_method
+        ?? localState?.paymentMethod
+        ?? 'card';
 
     if (!pgPaymentData) {
         console.error('[sirsoft-pay_nicepayments] pgPaymentData is required');

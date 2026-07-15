@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
-use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
@@ -182,7 +181,7 @@ class AdminVbankRefundController extends AdminBaseController
     private function isRefundableVbankPayment(OrderPayment $payment, string $tid): bool
     {
         return $payment->pg_provider === 'nicepayments'
-            && $payment->payment_method === PaymentMethodEnum::VBANK
+            && $payment->isVirtualAccount()
             && $payment->payment_status === PaymentStatusEnum::PAID
             && $payment->paid_at !== null
             && $payment->vbank_number !== null
