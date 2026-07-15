@@ -144,4 +144,45 @@ class RegisterEasyPayMethodsListenerTest extends TestCase
         $this->assertStringNotContainsString('Samsung Pay', $joined);
         $this->assertStringNotContainsString('L.pay', $joined);
     }
+
+    /**
+     * @scenario mark_form=badge, requires_ios=false, device=ipados_desktop_ua
+     *
+     * @effects brand_mark_flows_to_cached, badge_renders_text_and_color
+     */
+    public function test_easy_pay_methods_carry_badge_brand_mark(): void
+    {
+        // 브랜드 마크(색 배지)를 카탈로그로 편입 — 과거 checkoutEasyPayInjector 가
+        // DOM 후처리로 주입하던 markText/markClassName 을 등록 데이터로 이관.
+        $listener = new RegisterEasyPayMethodsListener;
+
+        $methods = collect($listener->injectEasyPayMethods([
+            ['id' => 'phone'],
+            ['id' => 'point'],
+        ]))->keyBy('id');
+
+        $this->assertSame(
+            ['text' => 'N', 'class' => 'bg-green-500 text-white'],
+            $methods->get('nicepay_naverpay')['brand_mark'] ?? null,
+        );
+        $this->assertSame(
+            ['text' => 'SSG', 'class' => 'bg-red-700 text-white'],
+            $methods->get('nicepay_ssgpay')['brand_mark'] ?? null,
+        );
+    }
+
+    public function test_only_apple_pay_requires_ios(): void
+    {
+        // 애플페이만 iOS 전용 노출 플래그를 가진다.
+        $listener = new RegisterEasyPayMethodsListener;
+
+        $methods = collect($listener->injectEasyPayMethods([
+            ['id' => 'phone'],
+            ['id' => 'point'],
+        ]))->keyBy('id');
+
+        $this->assertTrue($methods->get('nicepay_applepay')['requires_ios'] ?? false);
+        $this->assertArrayNotHasKey('requires_ios', $methods->get('nicepay_naverpay'));
+        $this->assertArrayNotHasKey('requires_ios', $methods->get('nicepay_samsungpay'));
+    }
 }

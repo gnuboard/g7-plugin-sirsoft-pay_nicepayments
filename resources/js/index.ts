@@ -1,7 +1,6 @@
 import { handlerMap } from './handlers';
 import { initEasyPayWatcher } from './handlers/setPaymentMethod';
 import { installOrderResponseInterceptor } from './orderResponseInterceptor';
-import { installCheckoutEasyPayInjector } from './checkoutEasyPayInjector';
 import { installOrderCompleteReceiptInjector } from './orderCompleteReceiptInjector';
 import { installMypageOrderShowInjector } from './mypageOrderShowInjector';
 import { installAdminPaymentMethodBrandInjector } from './adminPaymentMethodBrandInjector';
@@ -50,7 +49,6 @@ function registerHandlers(): number {
 function initPlugin(): void {
     // fetch 인터셉터는 G7Core 초기화와 무관하게 즉시 설치
     installOrderResponseInterceptor();
-    installCheckoutEasyPayInjector();
     installOrderCompleteReceiptInjector();
     installMypageOrderShowInjector();
     installAdminPaymentMethodBrandInjector();
