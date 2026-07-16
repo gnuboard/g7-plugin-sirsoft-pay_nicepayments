@@ -4,6 +4,7 @@
             "nicepay_easy_pay_config": "간편결제 설정",
             "nicepay_escrow": "에스크로",
             "nicepay_status": "결제 상태",
+            "nicepay_test_mode_status": "테스트 모드 상태",
             "nicepay_test_map": "테스트 결제 맵",
             "settings": "결제 설정",
             "vbank_info": "가상계좌 정보"
@@ -109,6 +110,10 @@
         "escrow_register_error": "에스크로 배송 등록에 실패했습니다.",
         "test_mode_badge": "테스트 결제",
         "test_mode_order_notice": "테스트 결제로 처리된 주문입니다. 실제 카드 승인/출금 알림이 발생할 수 있으나, 나이스페이먼츠 테스트 계정 결제는 당일 23:30경 일괄 자동 취소됩니다. 배송 전 운영 결제 여부를 확인하세요.",
+        "test_mode_settings_warning_plugin": "나이스페이먼츠",
+        "test_mode_settings_warning_title": "(주의!) 나이스페이먼츠 결제 설정이 현재 테스트결제로 되어 있습니다.",
+        "test_mode_settings_warning_body": "테스트결제 시 실제 결제가 되지 않으므로, 쇼핑몰 운영 중이면 반드시 실결제로 설정하여 운영하세요.",
+        "test_mode_settings_warning_action": "실결제로 설정",
         "test_mode_orders_in_list": "테스트 결제 주문 포함"
     },
     "easy_pay": {

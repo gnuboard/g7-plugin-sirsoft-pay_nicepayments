@@ -14,6 +14,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
+use InvalidArgumentException;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Exceptions\PaymentAmountMismatchException;
@@ -21,8 +23,10 @@ use Modules\Sirsoft\Ecommerce\Helpers\DeviceDetector;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Services\OrderProcessingService;
+use Plugins\Sirsoft\PayNicepayments\Concerns\IssuesReceiptCookie;
 use Plugins\Sirsoft\PayNicepayments\Concerns\PreventsReplayCallback;
 use Plugins\Sirsoft\PayNicepayments\Concerns\RecordsPaymentWindowClosure;
+use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
 use Plugins\Sirsoft\PayNicepayments\Concerns\SanitizesPgResponse;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\AuthCallbackRequest;
 use Plugins\Sirsoft\PayNicepayments\Http\Requests\VbankNotifyRequest;
@@ -38,8 +42,10 @@ use Plugins\Sirsoft\PayNicepayments\Support\UrlHelper;
  */
 class PaymentCallbackController
 {
+    use IssuesReceiptCookie;
     use PreventsReplayCallback;
     use RecordsPaymentWindowClosure;
+    use ResolvesEasyPayDisplay;
     use SanitizesPgResponse;
 
     private const PLUGIN_IDENTIFIER = 'sirsoft-pay_nicepayments';
@@ -72,6 +78,7 @@ class PaymentCallbackController
         'RcptTID',
         'EscrowYN',
         'MallReserved',
+        'MallReserved1',
         'Currency',
     ];
 
@@ -92,6 +99,7 @@ class PaymentCallbackController
         'RcptTID',
         'EscrowYN',
         'MallReserved',
+        'MallReserved1',
     ];
 
     private const VBANK_NOTIFY_RESPONSE_KEYS = [
@@ -170,13 +178,6 @@ class PaymentCallbackController
                 'ip' => $request->ip(),
             ]);
 
-            $this->markAuthPhaseFailureIfOrderMatches(
-                $moid,
-                isset($validated['Amt']) ? (int) $validated['Amt'] : null,
-                $authResultCode,
-                $authResultMsg,
-            );
-
             return redirect($this->resolveFailUrl([]));
         }
 
@@ -200,6 +201,8 @@ class PaymentCallbackController
                 'txTid' => $txTid,
                 'ip' => $request->ip(),
             ]);
+
+            $this->queueReceiptCookie($moid);
 
             return redirect($this->resolveSuccessUrl($moid));
         }
@@ -284,6 +287,7 @@ class PaymentCallbackController
                 $issueStatus = $this->recordVbankIssueWithLock($moid, $pgResponse, $resultCode, $payMethod, $isEscrow, $txTid);
                 if ($issueStatus === 'already_waiting') {
                     $this->logReplayDetected((string) ($pgResponse['TID'] ?? $txTid), $moid, 'authCallback (vbank issue)');
+                    $this->queueReceiptCookie($moid);
 
                     return redirect($this->resolveSuccessUrl($moid));
                 }
@@ -306,10 +310,11 @@ class PaymentCallbackController
                 ]);
             } else {
                 $effectiveTid = (string) ($pgResponse['TID'] ?? $txTid);
-                $completionStatus = $this->completeAuthorizedPaymentWithLock($moid, $pgResponse, $txTid, $amt, $isEscrow, $request);
+                $completionStatus = $this->completeAuthorizedPaymentWithLock($moid, $pgResponse, $txTid, $amt, $isEscrow, $request, $validated);
 
                 if ($completionStatus === 'already_paid') {
                     $this->logReplayDetected($effectiveTid, $moid, 'authCallback (card)');
+                    $this->queueReceiptCookie($moid);
 
                     return redirect($this->resolveSuccessUrl($moid));
                 }
@@ -321,6 +326,7 @@ class PaymentCallbackController
                     ]);
 
                     $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
+                    $this->queueReceiptCookie($moid);
 
                     return redirect($this->resolveSuccessUrl($moid));
                 }
@@ -337,6 +343,8 @@ class PaymentCallbackController
                     return redirect($this->resolveFailUrl(['error' => 'order_not_payable', 'orderId' => $moid]));
                 }
             }
+
+            $this->queueReceiptCookie($moid);
 
             return redirect($this->resolveSuccessUrl($moid));
 
@@ -356,6 +364,25 @@ class PaymentCallbackController
 
             return redirect($this->resolveFailUrl(['error' => 'amount_mismatch', 'orderId' => $moid]));
 
+        } catch (InvalidArgumentException $e) {
+            Log::error('NicePayments: invalid payment currency during authorization', [
+                'moid' => $moid,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->apiService->sendNetCancel($netCancelUrl, $txTid, $authToken, $amt);
+
+            if (isset($order)) {
+                $failureMessage = $this->invalidPaymentCurrencyFailureMessage($e);
+                $failedOrder = $this->orderService->failPayment($order, 'INVALID_PAYMENT_CURRENCY', $failureMessage);
+                $this->markNicePaymentFailed($failedOrder, 'INVALID_PAYMENT_CURRENCY', $failureMessage);
+            }
+
+            return redirect($this->resolveFailUrl([
+                'error' => 'invalid_payment_currency',
+                'orderId' => $moid,
+            ]));
+
         } catch (\Exception $e) {
             Log::error('NicePayments: authorize exception', [
                 'moid' => $moid,
@@ -365,6 +392,7 @@ class PaymentCallbackController
             $approvedTid = $pgResponse['TID'] ?? $txTid;
             if ($this->wasAlreadyPaid((string) $approvedTid)) {
                 $this->logReplayDetected((string) $approvedTid, $moid, 'authCallback exception');
+                $this->queueReceiptCookie($moid);
 
                 return redirect($this->resolveSuccessUrl($moid));
             }
@@ -468,8 +496,9 @@ class PaymentCallbackController
         int $amt,
         bool $isEscrow,
         Request $request,
+        array $callbackPayload,
     ): string {
-        return DB::transaction(function () use ($moid, $pgResponse, $txTid, $amt, $isEscrow, $request): string {
+        return DB::transaction(function () use ($moid, $pgResponse, $txTid, $amt, $isEscrow, $request, $callbackPayload): string {
             $lockedOrder = Order::query()
                 ->where('order_number', $moid)
                 ->lockForUpdate()
@@ -499,6 +528,7 @@ class PaymentCallbackController
             }
 
             $lockedOrder->setRelation('payment', $payment);
+            $easyPayMeta = $this->resolveEasyPayMeta(array_merge($pgResponse, $callbackPayload));
 
             $this->orderService->completePayment($lockedOrder, [
                 'transaction_id' => $effectiveTid,
@@ -507,10 +537,17 @@ class PaymentCallbackController
                 'card_name' => $pgResponse['IssuCardName'] ?? $pgResponse['CardName'] ?? null,
                 'card_installment_months' => (int) ($pgResponse['CardQuota'] ?? 0),
                 'is_interest_free' => false,
-                'embedded_pg_provider' => null,
+                'embedded_pg_provider' => $easyPayMeta['provider'] ?? null,
                 'receipt_url' => 'https://npg.nicepay.co.kr/issue/IssueLoader.do?type=0&TID='.rawurlencode($effectiveTid),
                 'payment_meta' => [
                     'result_code' => $pgResponse['ResultCode'] ?? null,
+                    ...($easyPayMeta === [] ? [] : [
+                        'nicepay_easy_pay_method' => $easyPayMeta['method'],
+                        'nicepay_easy_pay_provider' => $easyPayMeta['provider'],
+                        'nicepay_easy_pay_label' => $easyPayMeta['label'],
+                        'embedded_pg_provider' => $easyPayMeta['provider'],
+                        'embedded_pg_provider_label' => $easyPayMeta['label'],
+                    ]),
                     'pay_method' => $pgResponse['PayMethod'] ?? null,
                     'auth_date' => $pgResponse['AuthDate'] ?? null,
                     'mid' => $this->apiService->getMid(),
@@ -558,6 +595,12 @@ class PaymentCallbackController
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 400);
         }
 
+        $rateLimitKey = $this->signDataRateLimitKey($request, $moid);
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 20)) {
+            return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 429);
+        }
+        RateLimiter::hit($rateLimitKey, 60);
+
         // 주문 금액 검증: 클라이언트가 임의 금액으로 SignData를 요청하는 조작 방지
         $order = $this->orderService->findByOrderNumber($moid);
 
@@ -568,6 +611,15 @@ class PaymentCallbackController
             ]);
 
             return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.order_not_found')], 422);
+        }
+
+        if (! $this->requestMatchesOrderBuyer($request, $order)) {
+            Log::warning('NicePayments: SignData buyer verification failed', [
+                'moid' => $moid,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 403);
         }
 
         $payment = $order->payment()->first();
@@ -587,7 +639,15 @@ class PaymentCallbackController
         // 결제 청구액 SSoT = 결제 통화(order_currency) 환산액 (마일리지/예치금 차감 후 실청구액).
         // 클라이언트 SignData 요청액(amt = pg_payment_data.amount = resolveOrderPaymentChargeAmount)·
         // 코어 최종 승인 검증과 동일 기준. base≠결제 통화(예: base JPY, 결제 KRW)에서도 단위가 일치한다.
-        $expectedChargeAmount = $this->expectedPaymentPrice($order);
+        $expectedChargeAmount = $this->resolveExpectedPaymentPriceOrNull($order, 'sign_data', [
+            'moid' => $moid,
+            'requested_amt' => $amt,
+            'ip' => $request->ip(),
+        ]);
+        if ($expectedChargeAmount === null) {
+            return response()->json(['error' => __('sirsoft-pay_nicepayments::messages.errors.invalid_request')], 422);
+        }
+
         if ($expectedChargeAmount !== $amt) {
             Log::warning('NicePayments: SignData amount mismatch', [
                 'moid' => $moid,
@@ -631,6 +691,11 @@ class PaymentCallbackController
             'signData' => $signData,
             'mid' => $mid,
         ]);
+    }
+
+    private function signDataRateLimitKey(Request $request, string $moid): string
+    {
+        return 'sirsoft-pay_nicepayments:sign-data:'.sha1($request->ip().'|'.$moid);
     }
 
     /**
@@ -810,7 +875,7 @@ class PaymentCallbackController
         string $tid,
         int $amount,
     ): ?string {
-        if (! in_array($payment->payment_method?->value, ['vbank', 'virtual_account'], true)) {
+        if (! $payment->isVirtualAccount()) {
             return 'payment_method_not_vbank';
         }
 
@@ -837,7 +902,15 @@ class PaymentCallbackController
             return 'vbank_account_mismatch';
         }
 
-        if ($amount !== $this->expectedPaymentPrice($order)) {
+        $expectedAmount = $this->resolveExpectedPaymentPriceOrNull($order, 'vbank_notify', [
+            'tid' => $tid,
+            'received_amt' => $amount,
+        ]);
+        if ($expectedAmount === null) {
+            return 'invalid_payment_currency';
+        }
+
+        if ($amount !== $expectedAmount) {
             return 'amount_mismatch';
         }
 
@@ -917,41 +990,6 @@ class PaymentCallbackController
             && blank($payment->transaction_id)
             && blank($payment->card_approval_number)
             && $payment->paid_at === null;
-    }
-
-    private function markAuthPhaseFailureIfOrderMatches(
-        string $moid,
-        ?int $amount,
-        string $failureCode,
-        string $failureMessage,
-    ): void {
-        if (trim($moid) === '' || $amount === null || $amount < 1) {
-            return;
-        }
-
-        try {
-            $order = $this->orderService->findByOrderNumber($moid);
-            if (! $order || $amount !== $this->expectedPaymentPrice($order)) {
-                return;
-            }
-
-            $message = trim($failureMessage) !== ''
-                ? $failureMessage
-                : '나이스페이먼츠 인증 단계가 완료되지 않았습니다.';
-
-            $this->markPaymentWindowClosed(
-                $this->orderService,
-                $order,
-                $failureCode !== '' ? $failureCode : 'USER_CANCEL',
-                $message,
-                $message,
-            );
-        } catch (\Throwable $e) {
-            Log::warning('NicePayments: failed to record auth phase payment cancellation', [
-                'moid' => $moid,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     private function resolveSuccessUrl(string $orderId): string

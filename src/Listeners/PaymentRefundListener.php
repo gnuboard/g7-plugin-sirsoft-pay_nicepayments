@@ -14,6 +14,7 @@ use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
 class PaymentRefundListener implements HookListenerInterface
 {
     private const PG_PROVIDER_ID = 'nicepayments';
+    private const MONEY_EPSILON = 0.0001;
 
     /**
      * 구독할 훅 매핑 반환
@@ -104,9 +105,7 @@ class PaymentRefundListener implements HookListenerInterface
 
             $moid = (string) $order->order_number;
 
-            // 코어가 cancelled_amount를 훅 호출 전에 먼저 업데이트하므로
-            // getCancellableAmount() > 0이면 부분취소, 0이면 전액취소
-            $isPartial = $payment->getCancellableAmount() > 0;
+            $isPartial = $this->shouldUsePartialCancelCode($payment, $cancelAmt);
             $response = $apiService->cancelPayment($tid, $moid, $cancelAmt, $cancelMsg, $isPartial ? 1 : 0);
 
             Log::info('NicePayments: refund success', [
@@ -153,5 +152,18 @@ class PaymentRefundListener implements HookListenerInterface
         }
 
         $apiService->useStoredCredentials((bool) $meta['is_test_mode'], $mid);
+    }
+
+    /**
+     * 코어는 PG 환불 훅 호출 전에 누적 취소액을 먼저 반영한다.
+     * 따라서 남은 잔액 취소 시 getCancellableAmount() 만 보면 전액취소처럼 보일 수 있으므로,
+     * 이번 환불 이전에 이미 취소된 결제 통화 금액이 있었는지도 함께 확인한다.
+     */
+    private function shouldUsePartialCancelCode(OrderPayment $payment, int $cancelAmt): bool
+    {
+        $cancelledBeforeThisRefund = max(0.0, $payment->cancelledLocalAmount() - $cancelAmt);
+
+        return $cancelledBeforeThisRefund > self::MONEY_EPSILON
+            || $payment->getCancellableAmount() > self::MONEY_EPSILON;
     }
 }

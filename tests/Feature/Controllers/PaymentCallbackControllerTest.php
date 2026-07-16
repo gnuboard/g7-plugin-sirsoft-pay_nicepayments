@@ -4,10 +4,14 @@ namespace Plugins\Sirsoft\PayNicepayments\Tests\Feature\Controllers;
 
 use App\Extension\HookManager;
 use App\Models\User;
+use App\Services\PluginSettingsService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Mockery;
+use Modules\Sirsoft\Ecommerce\Database\Factories\OrderAddressFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderFactory;
+use Modules\Sirsoft\Ecommerce\Database\Factories\OrderOptionFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\OrderPaymentFactory;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
@@ -18,6 +22,21 @@ use Plugins\Sirsoft\PayNicepayments\Tests\PluginTestCase;
 class PaymentCallbackControllerTest extends PluginTestCase
 {
     private const TEST_MID = 'nicepay00m';
+
+    /**
+     * 애플리케이션 로그를 spy 로 감시하되 `activity` 채널은 실제 로거로 유지합니다.
+     *
+     * `Log::spy()` 단독 사용 시 `Log::channel('activity')` 가 null 을 반환하고,
+     * 결제 완료 훅이 태우는 활동 로그가 null 에 `info()` 를 호출해 \Error 로 죽는다.
+     * (`ResolvesActivityLogType::logActivity` 의 catch 는 \Exception 만 잡아 통과시킴)
+     */
+    private function spyApplicationLogKeepingActivityChannel(): void
+    {
+        $activityChannel = Log::channel('activity');
+
+        Log::spy();
+        Log::shouldReceive('channel')->with('activity')->andReturn($activityChannel);
+    }
 
     private const TEST_MERCHANT_KEY = 'EYzu8jGGMfqaDEp76gSckuvnaHHu+bC4opsSN6lHv3b2lurNYkVXrZ7Z1AoqQnXI3eLuaUFyoRNC6FkrzVjceg==';
 
@@ -46,7 +65,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
         $order = OrderFactory::new()->create([
             'user_id' => $user->id,
-            'order_number' => 'ORD-TEST-' . random_int(10000, 99999),
+            'order_number' => 'ORD-TEST-'.random_int(10000, 99999),
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'subtotal_amount' => $totalAmount,
             'total_discount_amount' => 0,
@@ -63,6 +82,8 @@ class PaymentCallbackControllerTest extends PluginTestCase
             'total_points_used_amount' => 0,
             'total_deposit_used_amount' => 0,
             'total_paid_amount' => 0,
+            'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
         ]);
 
         OrderPaymentFactory::new()->create([
@@ -91,28 +112,28 @@ class PaymentCallbackControllerTest extends PluginTestCase
             'redirect_fail_url' => '/shop/checkout',
         ];
 
-        $settingsMock = $this->createMock(\App\Services\PluginSettingsService::class);
+        $settingsMock = $this->createMock(PluginSettingsService::class);
         $settingsMock->method('get')
             ->willReturn(array_merge($defaults, $overrides));
 
-        $this->app->instance(\App\Services\PluginSettingsService::class, $settingsMock);
+        $this->app->instance(PluginSettingsService::class, $settingsMock);
     }
 
     private function makeSignature(string $authToken, string $mid, int $amt, string $merchantKey): string
     {
-        return bin2hex(hash('sha256', $authToken . $mid . (string) $amt . $merchantKey, true));
+        return bin2hex(hash('sha256', $authToken.$mid.(string) $amt.$merchantKey, true));
     }
 
     private function makeCallbackParams(string $moid, int $amt, array $overrides = []): array
     {
-        $authToken = 'AUTH_TOKEN_' . uniqid();
+        $authToken = 'AUTH_TOKEN_'.uniqid();
         $signature = $this->makeSignature($authToken, self::TEST_MID, $amt, self::TEST_MERCHANT_KEY);
 
         return array_merge([
             'AuthResultCode' => '0000',
             'AuthResultMsg' => '성공',
             'NextAppURL' => 'https://pay.nicepay.co.kr/v1/authorize',
-            'TxTid' => 'TX_TID_' . uniqid(),
+            'TxTid' => 'TX_TID_'.uniqid(),
             'AuthToken' => $authToken,
             'PayMethod' => 'CARD',
             'MID' => self::TEST_MID,
@@ -130,7 +151,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
             'PayMethod' => 'VBANK',
             'MID' => self::TEST_MID,
             'MOID' => $moid,
-            'TID' => 'VBANK_TID_' . uniqid(),
+            'TID' => 'VBANK_TID_'.uniqid(),
             'Amt' => $amt,
             'ResultCode' => '4110',
             'ResultMsg' => '입금완료',
@@ -200,6 +221,69 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
         $response->assertStatus(422)
             ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_amount'));
+    }
+
+    public function test_sign_data_rejects_buyer_mismatch(): void
+    {
+        $order = $this->createTestOrder(50000);
+        OrderAddressFactory::new()->forOrder($order)->shipping()->create([
+            'orderer_email' => 'buyer@example.com',
+            'orderer_phone' => '010-1234-5678',
+        ]);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+            'buyer_email' => 'attacker@example.com',
+            'buyer_phone' => '01099999999',
+        ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+    }
+
+    public function test_sign_data_is_rate_limited_by_order_and_ip(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        RateLimiter::clear('sirsoft-pay_nicepayments:sign-data:'.sha1('127.0.0.1|'.$order->order_number));
+
+        for ($i = 0; $i < 20; $i++) {
+            $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+                'amt' => 50000,
+                'moid' => $order->order_number,
+            ])->assertOk();
+        }
+
+        $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ])->assertStatus(429)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+    }
+
+    public function test_sign_data_rejects_unchargeable_payment_currency(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update([
+            'currency' => 'USD',
+            'currency_snapshot' => self::unchargeableUsdCurrencySnapshot(),
+        ]);
+        $this->mockPluginSettings();
+
+        $response = $this->postJson('/plugins/sirsoft-pay_nicepayments/payment/sign-data', [
+            'amt' => 50000,
+            'moid' => $order->order_number,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', __('sirsoft-pay_nicepayments::messages.errors.invalid_request'));
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::READY, $order->payment->payment_status);
     }
 
     public function test_sign_data_rejects_non_payable_order(): void
@@ -364,7 +448,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $order = $this->createTestOrder(50000);
         $this->mockPluginSettings();
 
-        $tid = 'TID_' . uniqid();
+        $tid = 'TID_'.uniqid();
         $params = $this->makeCallbackParams($order->order_number, 50000);
 
         Http::fake([
@@ -385,6 +469,42 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $payment->refresh();
         $this->assertEquals($tid, $payment->transaction_id);
         $this->assertEquals('APP12345', $payment->card_approval_number);
+    }
+
+    public function test_auth_callback_stores_easy_pay_display_metadata(): void
+    {
+        app()->setLocale('ko');
+
+        $order = $this->createTestOrder(50000);
+        $this->mockPluginSettings();
+
+        $tid = 'TID_EASY_PAY_'.uniqid();
+        $params = $this->makeCallbackParams($order->order_number, 50000, [
+            'MallReserved' => 'nicepay_easy_pay_method=nicepay_kakaopay',
+            'MallReserved1' => 'nicepay_kakaopay',
+        ]);
+
+        Http::fake([
+            'pay.nicepay.co.kr/v1/authorize' => Http::response(
+                $this->makeAuthorizeResponse($tid, $order->order_number, 50000),
+                200
+            ),
+        ]);
+
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+
+        $response->assertRedirect("/shop/orders/{$order->order_number}/complete");
+
+        $payment = $order->payment;
+        $payment->refresh();
+        $meta = $payment->payment_meta;
+
+        $this->assertSame('kakaopay', $payment->embedded_pg_provider);
+        $this->assertSame('nicepay_kakaopay', $meta['nicepay_easy_pay_method'] ?? null);
+        $this->assertSame('kakaopay', $meta['nicepay_easy_pay_provider'] ?? null);
+        $this->assertSame('카카오페이', $meta['nicepay_easy_pay_label']['ko'] ?? null);
+        $this->assertSame('KakaoPay', $meta['nicepay_easy_pay_label']['en'] ?? null);
+        $this->assertSame('kakaopay', $meta['embedded_pg_provider'] ?? null);
     }
 
     public function test_auth_callback_stores_only_whitelisted_pg_response_fields(): void
@@ -516,9 +636,12 @@ class PaymentCallbackControllerTest extends PluginTestCase
         }
     }
 
-    public function test_auth_callback_records_pre_authorize_failure_when_amount_matches_order(): void
+    public function test_auth_callback_keeps_pre_authorize_failure_retryable_when_amount_matches_order(): void
     {
         $order = $this->createTestOrder(50000);
+        $option = OrderOptionFactory::new()->forOrder($order)->create([
+            'option_status' => OrderStatusEnum::PENDING_ORDER,
+        ]);
         $this->mockPluginSettings();
 
         $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', [
@@ -532,10 +655,14 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $this->assertStringNotContainsString('error=', $response->headers->get('Location'));
 
         $order->refresh();
-        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
-        $this->assertEquals('0021', $order->order_meta['payment_failure_code'] ?? null);
-        $this->assertEquals(PaymentStatusEnum::FAILED, $order->payment->payment_status);
-        $this->assertNull($order->payment->cancelled_at);
+        $payment = $order->payment->fresh();
+
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+        $this->assertArrayNotHasKey('payment_failure_code', $order->order_meta ?? []);
+        $this->assertEquals(PaymentStatusEnum::READY, $payment->payment_status);
+        $this->assertArrayNotHasKey('failure_code', $payment->payment_meta ?? []);
+        $this->assertNull($payment->cancelled_at);
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $option->refresh()->option_status);
     }
 
     public function test_auth_callback_redirects_to_fail_on_mid_mismatch(): void
@@ -637,6 +764,41 @@ class PaymentCallbackControllerTest extends PluginTestCase
         $this->assertEquals('AUTHORIZE_EXCEPTION', $order->order_meta['payment_failure_code'] ?? null);
         $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
         $this->assertEquals('AUTHORIZE_EXCEPTION', $payment->payment_meta['failure_code'] ?? null);
+    }
+
+    public function test_auth_callback_records_invalid_payment_currency_as_failed_payment(): void
+    {
+        $order = $this->createTestOrder(50000);
+        $order->update([
+            'currency' => 'USD',
+            'currency_snapshot' => self::unchargeableUsdCurrencySnapshot(),
+        ]);
+        $this->mockPluginSettings();
+
+        $params = $this->makeCallbackParams($order->order_number, 50000);
+
+        Http::fake([
+            'pay.nicepay.co.kr/v1/authorize' => Http::response(
+                $this->makeAuthorizeResponse('TID_INVALID_CURRENCY', $order->order_number, 50000),
+                200
+            ),
+            'pay.nicepay.co.kr/v1/netcancel' => Http::response('OK', 200),
+        ]);
+
+        $response = $this->post('/plugins/sirsoft-pay_nicepayments/payment/callback', $params);
+
+        $response->assertRedirect();
+        $this->assertStringContainsString('error=invalid_payment_currency', $response->headers->get('Location'));
+
+        $order->refresh();
+        $payment = $order->payment->fresh();
+
+        $this->assertEquals(OrderStatusEnum::CANCELLED, $order->order_status);
+        $this->assertEquals('INVALID_PAYMENT_CURRENCY', $order->order_meta['payment_failure_code'] ?? null);
+        $this->assertEquals(PaymentStatusEnum::FAILED, $payment->payment_status);
+        $this->assertEquals('INVALID_PAYMENT_CURRENCY', $payment->payment_meta['failure_code'] ?? null);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/netcancel'));
     }
 
     public function test_auth_callback_redirects_to_fail_url_on_missing_params(): void
@@ -888,7 +1050,7 @@ class PaymentCallbackControllerTest extends PluginTestCase
 
     public function test_vbank_notify_success_log_does_not_include_depositor_or_full_account(): void
     {
-        Log::spy();
+        $this->spyApplicationLogKeepingActivityChannel();
 
         $tid = 'VBANK_TID_LOG_SAFE';
         $order = $this->createTestOrder(30000, PaymentMethodEnum::VBANK);

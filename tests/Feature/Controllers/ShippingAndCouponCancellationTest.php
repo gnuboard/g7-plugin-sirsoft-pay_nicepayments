@@ -507,6 +507,52 @@ class ShippingAndCouponCancellationTest extends PluginTestCase
     }
 
     /**
+     * 이미 부분취소된 거래의 남은 잔액을 취소할 때도 NicePayments 에는 부분취소 코드가 전달되어야 한다.
+     */
+    public function test_remaining_cancel_after_prior_partial_cancel_keeps_partial_flag(): void
+    {
+        $calls = [];
+        $mock = $this->createMock(NicePaymentsApiService::class);
+        $mock->expects($this->exactly(2))
+            ->method('cancelPayment')
+            ->willReturnCallback(function (
+                string $tid,
+                string $moid,
+                int $cancelAmt,
+                string $cancelMsg,
+                int $partialCancelCode,
+            ) use (&$calls) {
+                $calls[] = compact('tid', 'moid', 'cancelAmt', 'cancelMsg', 'partialCancelCode');
+
+                return self::CANCEL_SUCCESS;
+            });
+        $this->app->instance(NicePaymentsApiService::class, $mock);
+
+        $data = $this->createNicepayOrderWithShipping(optionCount: 2, unitPrice: 1000, shippingFee: 0);
+        $order = $data['order'];
+        $options = $data['options'];
+
+        $this->actingAs($this->adminUser)
+            ->postJson("/api/modules/sirsoft-ecommerce/admin/orders/{$order->order_number}/cancel", [
+                'type'      => 'partial',
+                'items'     => [['order_option_id' => $options[0]->id, 'cancel_quantity' => 1]],
+                'reason'    => 'changed_mind',
+                'cancel_pg' => true,
+            ])->assertOk()->assertJsonPath('success', true);
+
+        $this->actingAs($this->adminUser)
+            ->postJson("/api/modules/sirsoft-ecommerce/admin/orders/{$order->order_number}/cancel", [
+                'type'      => 'partial',
+                'items'     => [['order_option_id' => $options[1]->id, 'cancel_quantity' => 1]],
+                'reason'    => 'changed_mind',
+                'cancel_pg' => true,
+            ])->assertOk()->assertJsonPath('success', true);
+
+        $this->assertSame(1, $calls[0]['partialCancelCode']);
+        $this->assertSame(1, $calls[1]['partialCancelCode']);
+    }
+
+    /**
      * cancel_pg=false 이면 NicePayments API 를 호출하지 않아야 한다.
      */
     public function test_partial_cancel_without_pg_never_calls_nicepayments_api(): void

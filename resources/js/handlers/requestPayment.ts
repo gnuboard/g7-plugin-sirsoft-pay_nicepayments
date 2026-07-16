@@ -38,6 +38,11 @@ interface PgPaymentData {
     order_name: string;
     amount: number;
     currency?: string;
+    /**
+     * 서버가 저장한 결제수단 ID — 확장 수단이면 확장 ID 그대로(예: 'nicepay_naverpay').
+     * 확장 결제수단이 1급 시민이 되면서 서버가 원본 수단을 알고 내려준다(#475).
+     */
+    payment_method?: string;
     customer_name?: string;
     customer_email?: string;
     customer_phone?: string;
@@ -175,7 +180,11 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
     const { pgPaymentData, paymentMethod: paramPaymentMethod } = action.params ?? {};
 
     const localState = window.__templateApp?.globalState?._local;
-    const paymentMethod = paramPaymentMethod ?? localState?.paymentMethod ?? 'card';
+    // 서버가 저장한 결제수단(payment_method)이 SSoT — 확장 수단이면 확장 ID 가 그대로 온다(#475).
+    const paymentMethod = paramPaymentMethod
+        ?? pgPaymentData?.payment_method
+        ?? localState?.paymentMethod
+        ?? 'card';
 
     if (!pgPaymentData) {
         console.error('[sirsoft-pay_nicepayments] pgPaymentData is required');
@@ -208,10 +217,7 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
         }
 
         // 3. 서버에서 EdiDate + SignData 생성
-        //    sign-data 엔드포인트는 'auth' 미들웨어가 걸려있어 Sanctum Bearer 토큰
-        //    또는 세션 쿠키 중 하나가 필요. SPA 모드에서 토큰만 있는 경우를 대비해
-        //    localStorage 의 auth_token 을 Authorization 헤더로 명시 전달하고,
-        //    credentials:include 로 세션 쿠키도 함께 전송 (둘 중 하나만 있어도 통과).
+        //    공개 엔드포인트지만 서버에서 주문번호, 결제 전 상태, 금액, 구매자 컨텍스트를 검증한다.
         const signDataUrl = window.location.origin + config.sign_data_url;
         const authToken = (typeof localStorage !== 'undefined') ? localStorage.getItem('auth_token') : null;
         const signDataHeaders: Record<string, string> = {
@@ -226,7 +232,12 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
             method: 'POST',
             credentials: 'include',
             headers: signDataHeaders,
-            body: JSON.stringify({ amt: pgPaymentData.amount, moid: pgPaymentData.order_number }),
+            body: JSON.stringify({
+                amt: pgPaymentData.amount,
+                moid: pgPaymentData.order_number,
+                buyer_email: pgPaymentData.customer_email ?? '',
+                buyer_phone: pgPaymentData.customer_phone ?? '',
+            }),
         });
 
         if (!signDataRes.ok) {
@@ -267,6 +278,8 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
             DirectEasyPay: '',
             NicepayReserved: '',
             EasyPayMethod: '',
+            MallReserved: '',
+            MallReserved1: '',
         };
 
         // 휴대폰결제: 상품 유형 덮어쓰기 (0:디지털컨텐츠, 1:실물)
@@ -281,6 +294,8 @@ export async function requestPaymentHandler(action: PaymentAction, _context?: un
         // 간편결제 directive 필드 설정 — gnu5 orderform.js switch(settle_method==='간편결제') 동일
         if (isEasyPay) {
             formFields.DirectShowOpt = 'CARD';
+            formFields.MallReserved = `nicepay_easy_pay_method=${encodeURIComponent(paymentMethod)}`;
+            formFields.MallReserved1 = paymentMethod;
             switch (paymentMethod) {
                 case 'nicepay_naverpay':
                     formFields.DirectEasyPay = 'E020';

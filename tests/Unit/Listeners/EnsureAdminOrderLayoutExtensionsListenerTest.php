@@ -18,9 +18,12 @@ class EnsureAdminOrderLayoutExtensionsListenerTest extends TestCase
         $json = json_encode($result, JSON_UNESCAPED_SLASHES);
 
         $this->assertSame(1, $this->countDataSources($result, 'nicepay_test_map'));
+        $this->assertSame(1, $this->countDataSources($result, 'nicepay_easy_pay_display_map'));
         $this->assertSame(1, $this->countString($result, 'nicepay_test_map.data?.[row.order_number] === true'));
+        $this->assertSame(1, $this->countString($result, 'nicepay_easy_pay_display_map.data?.[row.order_number]?.payment_method_display_label ?? row.payment?.payment_method_label'));
         $this->assertIsString($json);
         $this->assertStringContainsString('/api/plugins/sirsoft-pay_nicepayments/admin/orders/test-mode-map', $json);
+        $this->assertStringContainsString('/api/plugins/sirsoft-pay_nicepayments/admin/orders/easy-pay-display-map', $json);
         $this->assertStringContainsString('sirsoft-pay_nicepayments.admin.test_mode_badge', $json);
     }
 
@@ -32,7 +35,9 @@ class EnsureAdminOrderLayoutExtensionsListenerTest extends TestCase
         $twice = $listener->ensureTestBadgeLayout($once, 1);
 
         $this->assertSame(1, $this->countDataSources($twice, 'nicepay_test_map'));
+        $this->assertSame(1, $this->countDataSources($twice, 'nicepay_easy_pay_display_map'));
         $this->assertSame(1, $this->countString($twice, 'nicepay_test_map.data?.[row.order_number] === true'));
+        $this->assertSame(1, $this->countString($twice, 'nicepay_easy_pay_display_map.data?.[row.order_number]?.payment_method_display_label ?? row.payment?.payment_method_label'));
     }
 
     public function test_detail_listener_ensures_test_notice_and_payment_panels(): void

@@ -21,6 +21,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-001',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -55,6 +56,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-REAL',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -109,6 +111,31 @@ class PaymentCloseReportControllerTest extends PluginTestCase
 
         $response->assertStatus(422)
             ->assertJsonPath('errors.message.0', 'Payment amount does not match the order amount.');
+    }
+
+    public function test_close_report_rejects_unchargeable_payment_currency_without_marking_failed(): void
+    {
+        $order = $this->makeOrder('ORD-NICE-CLOSE-CURRENCY', 10000);
+        $order->currency = 'USD';
+        $order->currency_snapshot = self::unchargeableUsdCurrencySnapshot();
+
+        $orderService = Mockery::mock(OrderProcessingService::class);
+        $orderService->shouldReceive('findByOrderNumber')
+            ->once()
+            ->with('ORD-NICE-CLOSE-CURRENCY')
+            ->andReturn($order);
+        $orderService->shouldNotReceive('failPayment');
+        $orderService->shouldNotReceive('recordPaymentCancellation');
+
+        $this->app->instance(OrderProcessingService::class, $orderService);
+
+        $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
+            'oid' => 'ORD-NICE-CLOSE-CURRENCY',
+            'price' => 10000,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('errors.message.0', 'Payment currency is not chargeable.');
     }
 
     public function test_close_report_rejects_buyer_mismatch(): void
@@ -172,6 +199,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-RACE',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -232,6 +260,7 @@ class PaymentCloseReportControllerTest extends PluginTestCase
             'order_number' => 'ORD-NICE-CLOSE-PAID',
             'order_status' => OrderStatusEnum::PENDING_ORDER,
             'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
             'subtotal_amount' => 10000,
             'total_amount' => 10000,
             'total_due_amount' => 10000,
@@ -264,12 +293,60 @@ class PaymentCloseReportControllerTest extends PluginTestCase
         $this->assertNotEquals(OrderStatusEnum::CANCELLED, $order->order_status);
     }
 
+    public function test_close_report_ignores_vbank_order_waiting_for_deposit(): void
+    {
+        $order = OrderFactory::new()->create([
+            'order_number' => 'ORD-NICE-CLOSE-VBANK-WAIT',
+            'order_status' => OrderStatusEnum::PENDING_ORDER,
+            'currency' => 'KRW',
+            'currency_snapshot' => self::krwCurrencySnapshot(),
+            'subtotal_amount' => 10000,
+            'total_amount' => 10000,
+            'total_due_amount' => 10000,
+            'total_paid_amount' => 0,
+        ]);
+        OrderPaymentFactory::new()->create([
+            'order_id' => $order->id,
+            'payment_status' => PaymentStatusEnum::WAITING_DEPOSIT,
+            'payment_method' => PaymentMethodEnum::VBANK,
+            'pg_provider' => 'nicepayments',
+            'paid_amount_local' => 0,
+            'transaction_id' => 'TID_VBANK_WAITING',
+            'vbank_name' => '국민은행',
+            'vbank_number' => '1234567890',
+            'vbank_issued_at' => now(),
+            'payment_meta' => [
+                'vbank_tid' => 'TID_VBANK_WAITING',
+                'vbank_num' => '1234567890',
+                'vbank_name' => '국민은행',
+            ],
+        ]);
+
+        $response = $this->postJson('/api/plugins/sirsoft-pay_nicepayments/payment/close-report', [
+            'oid' => 'ORD-NICE-CLOSE-VBANK-WAIT',
+            'price' => 10000,
+            'payment_method' => 'vbank',
+            'reason' => 'nicepay-window-closed',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'ignored')
+            ->assertJsonPath('data.reason', 'payment_not_ready');
+
+        $order->refresh();
+        $this->assertEquals(OrderStatusEnum::PENDING_ORDER, $order->order_status);
+        $this->assertEquals(PaymentStatusEnum::WAITING_DEPOSIT, $order->payment->payment_status);
+        $this->assertSame('TID_VBANK_WAITING', $order->payment->transaction_id);
+        $this->assertNull($order->order_meta['payment_failure_code'] ?? null);
+    }
+
     private function makeOrder(string $orderNumber, int $amount): Order
     {
         $order = new Order;
         $order->order_number = $orderNumber;
         $order->order_status = OrderStatusEnum::PENDING_ORDER;
         $order->currency = 'KRW';
+        $order->currency_snapshot = self::krwCurrencySnapshot();
         $order->total_due_amount = $amount;
 
         return $order;

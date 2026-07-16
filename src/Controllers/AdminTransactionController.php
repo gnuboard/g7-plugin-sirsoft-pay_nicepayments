@@ -8,10 +8,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
 
 class AdminTransactionController extends AdminBaseController
 {
+    use ResolvesEasyPayDisplay;
+
     public function __construct(
         private NicePaymentsApiService $apiService
     ) {
@@ -72,10 +75,21 @@ class AdminTransactionController extends AdminBaseController
 
             $localPayment = DB::table('ecommerce_order_payments')
                 ->where('transaction_id', $tid)
-                ->select(['is_escrow', 'payment_meta'])
+                ->select(['is_escrow', 'payment_meta', 'payment_method', 'embedded_pg_provider'])
                 ->first();
 
             $result['_local_is_escrow'] = (bool) ($localPayment?->is_escrow ?? false);
+            $display = $localPayment ? $this->resolvePaymentDisplay($localPayment) : [
+                'payment_method_label' => null,
+                'payment_method_display_label' => null,
+                'embedded_pg_provider' => null,
+                'embedded_pg_provider_label' => null,
+            ];
+            $result['_base_pay_method_label'] = $display['payment_method_label'];
+            $result['_embedded_pg_provider'] = $display['embedded_pg_provider'];
+            $result['_embedded_pg_provider_label'] = $display['embedded_pg_provider_label'];
+            $result['_pay_method_label'] = $display['payment_method_display_label'];
+            $result['payment_method_display_label'] = $display['payment_method_display_label'];
 
             if ($localPayment?->payment_meta) {
                 $meta = json_decode($localPayment->payment_meta, true);

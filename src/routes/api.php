@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminEscrowController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminOrderListController;
+use Plugins\Sirsoft\PayNicepayments\Controllers\AdminSettingsStatusController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminTransactionController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminVbankNotificationController;
 use Plugins\Sirsoft\PayNicepayments\Controllers\AdminVbankRefundController;
@@ -23,10 +24,9 @@ use Plugins\Sirsoft\PayNicepayments\Controllers\UserReceiptController;
 Route::post('/payment/close-report', [PaymentCloseReportController::class, 'store'])
     ->name('payment.close-report');
 
-Route::middleware(['auth:sanctum'])->group(function () {
-    Route::get('/user/orders/{orderNumber}/receipt', [UserReceiptController::class, 'show'])
-        ->name('user.orders.receipt');
-});
+Route::get('/user/orders/{orderNumber}/receipt', [UserReceiptController::class, 'show'])
+    ->middleware('optional.sanctum')
+    ->name('user.orders.receipt');
 
 Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', 'admin'])->group(function () {
     // 가상계좌 입금통보 URL 조회 (관리자 설정 페이지 표시용)
@@ -39,6 +39,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', 'admin'])->g
         ]);
     })->middleware('permission:admin,sirsoft-ecommerce.settings.read')
         ->name('vbank.notify.url');
+
+    Route::get('/settings/test-mode-status', [AdminSettingsStatusController::class, 'testMode'])
+        ->middleware('permission:admin,sirsoft-ecommerce.settings.read')
+        ->name('settings.test-mode-status');
 
     // TID 단건 거래 조회
     Route::post('/transaction/query', [AdminTransactionController::class, 'query'])
@@ -54,6 +58,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', 'admin'])->g
     Route::get('/orders/test-mode-map', [AdminOrderListController::class, 'testModeMap'])
         ->middleware('permission:admin,sirsoft-ecommerce.orders.read')
         ->name('orders.test-mode-map');
+
+    // 주문 목록 간편결제 표시 맵 조회
+    Route::get('/orders/easy-pay-display-map', [AdminOrderListController::class, 'easyPayDisplayMap'])
+        ->middleware('permission:admin,sirsoft-ecommerce.orders.read')
+        ->name('orders.easy-pay-display-map');
 
     // 가상계좌 입금 완료 건 환불 (환불 계좌 정보 필요)
     Route::post('/vbank-refund', [AdminVbankRefundController::class, 'refund'])

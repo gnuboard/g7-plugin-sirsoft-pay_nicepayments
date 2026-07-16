@@ -23,6 +23,11 @@ interface OrderData {
     payment?: Payment;
 }
 
+interface ReceiptInfo {
+    receipt_url?: string | null;
+    payment_method_display_label?: string | null;
+}
+
 function getOrderFromState(orderNumber: string): OrderData | null {
     try {
         const g7 = (window as Record<string, unknown>).G7Core as Record<string, unknown> | undefined;
@@ -41,7 +46,7 @@ function getToken(): string | null {
     return localStorage.getItem('auth_token');
 }
 
-async function fetchReceiptUrl(orderNumber: string): Promise<string | null> {
+async function fetchReceiptInfo(orderNumber: string): Promise<ReceiptInfo | null> {
     const token = getToken();
     if (!token) return null;
     try {
@@ -49,11 +54,35 @@ async function fetchReceiptUrl(orderNumber: string): Promise<string | null> {
             headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         });
         if (!res.ok) return null;
-        const data = (await res.json()) as { receipt_url?: string };
-        return data.receipt_url ?? null;
+        return (await res.json()) as ReceiptInfo;
     } catch {
         return null;
     }
+}
+
+function patchPaymentMethodDisplay(container: Element, displayLabel: string | null | undefined): boolean {
+    if (!displayLabel) return false;
+
+    const rows = Array.from(container.querySelectorAll<HTMLElement>('div'));
+    for (const row of rows) {
+        const spans = Array.from(row.children).filter(
+            (child): child is HTMLElement => child instanceof HTMLElement && child.tagName === 'SPAN',
+        );
+        if (spans.length < 2) continue;
+
+        const label = spans[0].textContent?.trim();
+        if (label !== '결제 방법' && label !== '결제수단' && label !== 'Payment Method') continue;
+
+        const value = spans[spans.length - 1];
+        if (value.textContent?.trim() !== displayLabel) {
+            value.textContent = displayLabel;
+            value.dataset.nicepayPaymentMethodPatched = 'true';
+        }
+        row.dataset.nicepayPaymentMethodRow = 'true';
+        return true;
+    }
+
+    return false;
 }
 
 function findPaymentContainer(): Element | null {
@@ -91,9 +120,10 @@ function buildReceiptRow(orderNumber: string): HTMLElement {
     btn.addEventListener('click', async () => {
         btn.disabled = true;
         btn.textContent = '로딩 중...';
-        const url = await fetchReceiptUrl(orderNumber);
+        const data = await fetchReceiptInfo(orderNumber);
         btn.disabled = false;
         btn.textContent = '영수증 조회';
+        const url = data?.receipt_url ?? null;
         if (url) {
             window.open(url, 'nicepay_receipt', 'width=800,height=600,scrollbars=yes,resizable=yes');
         }
@@ -188,6 +218,8 @@ async function tryInject(orderNumber: string): Promise<boolean> {
 
     const container = findPaymentContainer();
     if (!container) return false;
+    const receiptInfo = await fetchReceiptInfo(orderNumber);
+    patchPaymentMethodDisplay(container, receiptInfo?.payment_method_display_label);
 
     // 가상계좌 입금 안내 — 결제수단이 vbank 이고 가상계좌 번호 발급된 경우 표시 (paid_at 무관: 입금 전후 모두 표시).
     if (payment.payment_method === 'vbank' && payment.vbank_number && !document.getElementById(VBANK_BLOCK_ID)) {
