@@ -178,6 +178,28 @@ class Plugin extends AbstractPlugin
         ];
     }
 
+    /**
+     * 이 플러그인이 등록할 HTTP 미들웨어 선언을 반환합니다.
+     *
+     * IP 화이트리스트(VbankNotifyIpWhitelist)는 나이스페이먼츠 서버 발신 가상계좌 통보
+     * webhook 라우트에만 부착합니다. 브라우저 POST 콜백(payment.callback)은 사용자 IP 라
+     * 대상에서 제외 — 결제 회귀 방지. 코어 ExtensionMiddlewareGate 가 요청 시점에 실행합니다.
+     *
+     * @return array<int, array{class: class-string, groups: array<int, string>, timing?: string, targets: array<int, string>}>
+     */
+    public function getMiddleware(): array
+    {
+        return [
+            [
+                'class' => Http\Middleware\VbankNotifyIpWhitelist::class,
+                'groups' => ['web'],
+                'targets' => [
+                    'web.plugins.sirsoft-pay_nicepayments.payment.vbank-notify',
+                ],
+            ],
+        ];
+    }
+
     public function getHookListeners(): array
     {
         return [
