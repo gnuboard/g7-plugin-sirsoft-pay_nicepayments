@@ -177,14 +177,14 @@
                                                 "handler": "sequence",
                                                 "actions": [
                                                     { "handler": "setState", "params": { "target": "_local", "filter.ordererUuid": "{{row.user?.uuid}}", "filter.searchField": "all", "filter.searchKeyword": "", "ordererSearchResults": "{{[{ uuid: row.user?.uuid, name: row.user?.name || row.address?.orderer_name, email: row.user?.email || '' }]}}" } },
-                                                    { "comment": "이 주문자의 주문만 보기 — 앞선 setState 가 검색어를 비우므로 URL 의 검색 조건도 함께 비운다. 비우지 않으면 화면 입력창은 빈 채로 이전 검색어가 계속 적용된다 (#75).", "handler": "navigate", "params": { "path": "/admin/ecommerce/orders", "mergeQuery": true, "query": { "orderer_uuid": "{{row.user?.uuid}}", "search_field": "", "search_keyword": "", "page": 1 }, "transition_overlay_target": "order_datagrid__body" } }
+                                                    { "comment": "이 주문자의 주문만 보기 — 앞선 setState 가 검색어를 비우므로 URL 의 검색 조건도 함께 비운다. 비우지 않으면 화면 입력창은 빈 채로 이전 검색어가 계속 적용된다 (#75).", "handler": "navigate", "params": { "path": "/admin/ecommerce/orders", "mergeQuery": true, "query": { "orderer_uuid": "{{row.user?.uuid}}", "search_field": "", "search_keyword": "", "page": 1 }, "replace": true, "transition_overlay_target": "order_datagrid__body" } }
                                                 ]
                                             },
                                             "search_by_orderer_guest": {
                                                 "handler": "sequence",
                                                 "actions": [
                                                     { "handler": "setState", "params": { "target": "_local", "filter.searchField": "orderer_name", "filter.searchKeyword": "{{row.address?.orderer_name || row.user?.name}}", "filter.ordererUuid": "" } },
-                                                    { "comment": "비회원 주문자명으로 검색 — 회원 지정 필터(orderer_uuid)를 함께 비우지 않으면 이름 검색과 회원 필터가 겹쳐 결과가 비어 보인다 (#75).", "handler": "navigate", "params": { "path": "/admin/ecommerce/orders", "mergeQuery": true, "query": { "search_field": "orderer_name", "search_keyword": "{{row.address?.orderer_name || row.user?.name}}", "orderer_uuid": "", "page": 1 }, "transition_overlay_target": "order_datagrid__body" } }
+                                                    { "comment": "비회원 주문자명으로 검색 — 회원 지정 필터(orderer_uuid)를 함께 비우지 않으면 이름 검색과 회원 필터가 겹쳐 결과가 비어 보인다 (#75).", "handler": "navigate", "params": { "path": "/admin/ecommerce/orders", "mergeQuery": true, "query": { "search_field": "orderer_name", "search_keyword": "{{row.address?.orderer_name || row.user?.name}}", "orderer_uuid": "", "page": 1 }, "replace": true, "transition_overlay_target": "order_datagrid__body" } }
                                                 ]
                                             }
                                         }
