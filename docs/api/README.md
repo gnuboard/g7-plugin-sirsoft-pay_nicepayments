@@ -5,3 +5,4 @@
 | 문서 | 도메인 | 설명 |
 | --- | --- | --- |
 | [vbank.md](vbank.md) | `payment` | 가상계좌 입금통보 수신 경로와 발신 서버(IP) 확인 |
+| [escrow.md](escrow.md) | `order` | 관리자 에스크로 결제 조회·배송 등록 (JSON API) |
