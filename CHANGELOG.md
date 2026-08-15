@@ -4,6 +4,12 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
 
+## [1.0.2] - 2026-08-14
+
+### Fixed
+
+- 관리자 주문 상세에서 에스크로 배송 등록이 실패하면 내부 오류 원문이 그대로 안내 문구 자리에 표시되던 문제를 수정했습니다. 이제 상황에 맞는 안내가 표시되고, 원인은 서버 로그에만 기록됩니다.
+
 ## [1.0.1] - 2026-08-10
 
 ### Changed

@@ -105,7 +105,14 @@ class AdminEscrowController extends AdminBaseController
 
             return ResponseHelper::success('common.success', $result);
         } catch (\Exception $e) {
-            return ResponseHelper::error($e->getMessage(), 502, null);
+            // 원문은 로그로만 — 응답 메시지 키 자리에 넘기면 키 해석에 실패해
+            // 예외 원문(스택 힌트 포함)이 그대로 관리자 화면에 나간다.
+            Log::error('NicePayments: escrow delivery registration failed', [
+                'tid' => $validated['tid'],
+                'error' => $e->getMessage(),
+            ]);
+
+            return ResponseHelper::error('common.failed', 502, null);
         }
     }
 
