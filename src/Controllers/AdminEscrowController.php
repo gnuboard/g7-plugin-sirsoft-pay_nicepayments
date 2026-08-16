@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 
+// audit:allow api-doc-coverage 요청 파라미터·응답 구조 무변경 — 테이블명 리터럴을 모델 파생으로 정리한 내부 리팩토링 (#571)
+
 use App\Helpers\ResponseHelper;
 use App\Http\Controllers\Api\Base\AdminBaseController;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
+use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
 
@@ -38,12 +41,12 @@ class AdminEscrowController extends AdminBaseController
      */
     public function getEscrowPayments(string $orderNumber): JsonResponse
     {
-        $payments = DB::table('ecommerce_order_payments')
-            ->join('ecommerce_orders', 'ecommerce_orders.id', '=', 'ecommerce_order_payments.order_id')
-            ->where('ecommerce_orders.order_number', $orderNumber)
-            ->where('ecommerce_order_payments.pg_provider', 'nicepayments')
-            ->where('ecommerce_order_payments.is_escrow', 1)
-            ->get(['ecommerce_order_payments.id', 'ecommerce_order_payments.transaction_id', 'ecommerce_order_payments.payment_method', 'ecommerce_order_payments.payment_status']);
+        $payments = DB::table((new OrderPayment)->getTable().' as p')
+            ->join((new Order)->getTable().' as o', 'o.id', '=', 'p.order_id')
+            ->where('o.order_number', $orderNumber)
+            ->where('p.pg_provider', 'nicepayments')
+            ->where('p.is_escrow', 1)
+            ->get(['p.id', 'p.transaction_id', 'p.payment_method', 'p.payment_status']);
 
         return ResponseHelper::success('common.success', [
             'escrow_payments' => $payments->map(fn ($p) => [

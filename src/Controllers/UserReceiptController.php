@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 
+// audit:allow api-doc-coverage 요청 파라미터·응답 구조 무변경 — 테이블명 리터럴을 모델 파생으로 정리한 내부 리팩토링 (#571)
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\Sirsoft\Ecommerce\Models\Order;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Services\GuestOrderAuthService;
 use Plugins\Sirsoft\PayNicepayments\Concerns\IssuesReceiptCookie;
 use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
@@ -36,8 +40,8 @@ class UserReceiptController
     public function show(Request $request, string $orderNumber): JsonResponse
     {
         $user = $request->user();
-        $query = DB::table('ecommerce_order_payments as p')
-            ->join('ecommerce_orders as o', 'o.id', '=', 'p.order_id')
+        $query = DB::table((new OrderPayment)->getTable().' as p')
+            ->join((new Order)->getTable().' as o', 'o.id', '=', 'p.order_id')
             ->where('o.order_number', $orderNumber)
             ->where('p.pg_provider', 'nicepayments');
 
@@ -51,7 +55,7 @@ class UserReceiptController
             } elseif ($this->verifyReceiptCookie($request->cookie(self::RECEIPT_COOKIE_NAME), $orderNumber)) {
                 $query->whereNull('o.user_id')
                     ->where('o.id', function ($sub) use ($orderNumber) {
-                        $sub->select('id')->from('ecommerce_orders')->where('order_number', $orderNumber);
+                        $sub->select('id')->from((new Order)->getTable())->where('order_number', $orderNumber);
                     });
             } else {
                 return response()->json(['error' => 'Not found'], 404);
@@ -74,7 +78,7 @@ class UserReceiptController
 
         $receiptUrl = $payment->receipt_url;
         if (! $receiptUrl && $payment->transaction_id) {
-            $receiptUrl = self::RECEIPT_BASE_URL . '?type=0&TID=' . rawurlencode($payment->transaction_id);
+            $receiptUrl = self::RECEIPT_BASE_URL.'?type=0&TID='.rawurlencode($payment->transaction_id);
         }
 
         $cashReceiptUrl = null;
@@ -84,7 +88,7 @@ class UserReceiptController
             $meta = json_decode($payment->payment_meta, true);
             $rcptTid = $meta['rcpt_tid'] ?? ($meta['pg_raw_response']['RcptTID'] ?? null);
             if ($rcptTid) {
-                $cashReceiptUrl = self::RECEIPT_BASE_URL . '?type=1&TID=' . rawurlencode($rcptTid);
+                $cashReceiptUrl = self::RECEIPT_BASE_URL.'?type=1&TID='.rawurlencode($rcptTid);
             }
             $isTestMode = (bool) ($meta['is_test_mode'] ?? false);
         }
