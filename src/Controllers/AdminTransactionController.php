@@ -2,12 +2,16 @@
 
 namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 
+// audit:allow api-doc-coverage 요청 파라미터·응답 구조 무변경 — 테이블명 리터럴을 모델 파생으로 정리한 내부 리팩토링 (#571)
+
 use App\Helpers\ResponseHelper;
 use App\Http\Controllers\Api\Base\AdminBaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sirsoft\Ecommerce\Models\Order;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Plugins\Sirsoft\PayNicepayments\Concerns\ResolvesEasyPayDisplay;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
 
@@ -52,16 +56,16 @@ class AdminTransactionController extends AdminBaseController
      */
     public function queryByOrder(string $orderNumber): JsonResponse
     {
-        $payment = DB::table('ecommerce_order_payments')
-            ->join('ecommerce_orders', 'ecommerce_orders.id', '=', 'ecommerce_order_payments.order_id')
-            ->where('ecommerce_orders.order_number', $orderNumber)
-            ->whereNotNull('ecommerce_order_payments.transaction_id')
-            ->where('ecommerce_order_payments.transaction_id', '!=', '')
-            ->whereIn('ecommerce_order_payments.pg_provider', ['nicepayments', 'nicepay'])
-            ->select(['ecommerce_order_payments.transaction_id'])
+        $payment = DB::table((new OrderPayment)->getTable().' as p')
+            ->join((new Order)->getTable().' as o', 'o.id', '=', 'p.order_id')
+            ->where('o.order_number', $orderNumber)
+            ->whereNotNull('p.transaction_id')
+            ->where('p.transaction_id', '!=', '')
+            ->whereIn('p.pg_provider', ['nicepayments', 'nicepay'])
+            ->select(['p.transaction_id'])
             ->first();
 
-        if (!$payment) {
+        if (! $payment) {
             return ResponseHelper::success('common.success', null);
         }
 
@@ -73,7 +77,7 @@ class AdminTransactionController extends AdminBaseController
         try {
             $result = $this->apiService->queryTransaction($tid);
 
-            $localPayment = DB::table('ecommerce_order_payments')
+            $localPayment = DB::table((new OrderPayment)->getTable())
                 ->where('transaction_id', $tid)
                 ->select(['is_escrow', 'payment_meta', 'payment_method', 'embedded_pg_provider'])
                 ->first();
@@ -104,6 +108,7 @@ class AdminTransactionController extends AdminBaseController
                 'tid' => $tid,
                 'error' => $e->getMessage(),
             ]);
+
             return ResponseHelper::error('common.failed', 502, null);
         }
     }
