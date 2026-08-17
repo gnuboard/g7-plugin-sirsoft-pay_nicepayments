@@ -84,7 +84,7 @@
 
 | 이름 | 타입 | 필수 | 제약 | 설명 |
 | --- | --- | --- | --- | --- |
-| `tid` | string | 예 | — | 대상 에스크로 결제의 나이스페이먼츠 TID |
+| `tid` | string | 예 | 최대 30자 | 대상 에스크로 결제의 나이스페이먼츠 TID (나이스페이먼츠 TID 규격 30자 — 초과 시 422) |
 | `delivery_name` | string | 예 | 최대 100자 | 택배사명 |
 | `tracking_number` | string | 예 | 최대 100자 | 송장번호 |
 | `buyer_address` | string | 예 | 최대 200자 | 구매자 배송지 |
