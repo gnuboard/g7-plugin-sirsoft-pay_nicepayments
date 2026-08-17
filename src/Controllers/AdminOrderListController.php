@@ -34,6 +34,7 @@ class AdminOrderListController extends AdminBaseController
      */
     public function testModeMap(): JsonResponse
     {
+        // audit:allow controller-direct-data-access reason: PG 플러그인의 결제 레코드 직접 조회/기록 — ecommerce Repository 의존 시 모듈 버전 제약 연쇄(PaymentLimits 선례). Service/Repository 이관은 후속 백로그
         $rows = DB::table((new Order)->getTable().' as o')
             ->join((new OrderPayment)->getTable().' as p', 'p.order_id', '=', 'o.id')
             ->whereIn('p.pg_provider', ['nicepayments', 'nicepay'])
@@ -63,6 +64,7 @@ class AdminOrderListController extends AdminBaseController
      */
     public function easyPayDisplayMap(): JsonResponse
     {
+        // audit:allow controller-direct-data-access reason: PG 플러그인의 결제 레코드 직접 조회/기록 — ecommerce Repository 의존 시 모듈 버전 제약 연쇄(PaymentLimits 선례). Service/Repository 이관은 후속 백로그
         $rows = DB::table((new Order)->getTable().' as o')
             ->join((new OrderPayment)->getTable().' as p', 'p.order_id', '=', 'o.id')
             ->whereIn('p.pg_provider', ['nicepayments', 'nicepay'])

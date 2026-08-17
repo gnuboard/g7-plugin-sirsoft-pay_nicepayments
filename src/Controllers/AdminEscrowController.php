@@ -9,12 +9,12 @@ namespace Plugins\Sirsoft\PayNicepayments\Controllers;
 use App\Helpers\ResponseHelper;
 use App\Http\Controllers\Api\Base\AdminBaseController;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
+use Plugins\Sirsoft\PayNicepayments\Http\Requests\EscrowDeliveryRegisterRequest;
 use Plugins\Sirsoft\PayNicepayments\Services\NicePaymentsApiService;
 
 class AdminEscrowController extends AdminBaseController
@@ -41,6 +41,7 @@ class AdminEscrowController extends AdminBaseController
      */
     public function getEscrowPayments(string $orderNumber): JsonResponse
     {
+        // audit:allow controller-direct-data-access reason: PG 플러그인의 결제 레코드 직접 조회/기록 — ecommerce Repository 의존 시 모듈 버전 제약 연쇄(PaymentLimits 선례). Service/Repository 이관은 후속 백로그
         $payments = DB::table((new OrderPayment)->getTable().' as p')
             ->join((new Order)->getTable().' as o', 'o.id', '=', 'p.order_id')
             ->where('o.order_number', $orderNumber)
@@ -69,18 +70,12 @@ class AdminEscrowController extends AdminBaseController
      * NicePay escrow_process.jsp 호출하여 배송 정보(택배사/송장번호/수령인 등)를
      * NicePay 측에 등록. 등록 완료 시 구매자에게 자동으로 구매확정 안내가 발송됨.
      *
-     * @param  Request  $request  배송 정보 폼
+     * @param  EscrowDeliveryRegisterRequest  $request  배송 정보 폼
      * @return JsonResponse 등록 결과 + ResultCode
      */
-    public function registerDelivery(Request $request): JsonResponse
+    public function registerDelivery(EscrowDeliveryRegisterRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'tid' => 'required|string',
-            'delivery_name' => 'required|string|max:100',
-            'tracking_number' => 'required|string|max:100',
-            'buyer_address' => 'required|string|max:200',
-            'register_name' => 'required|string|max:50',
-        ]);
+        $validated = $request->validated();
 
         try {
             $payment = $this->findRegisterableEscrowPayment($validated['tid']);
@@ -121,6 +116,7 @@ class AdminEscrowController extends AdminBaseController
 
     private function findRegisterableEscrowPayment(string $tid): ?OrderPayment
     {
+        // audit:allow controller-direct-data-access reason: PG 플러그인의 결제 레코드 직접 조회/기록 — ecommerce Repository 의존 시 모듈 버전 제약 연쇄(PaymentLimits 선례). Service/Repository 이관은 후속 백로그
         return OrderPayment::query()
             ->where('pg_provider', 'nicepayments')
             ->where('is_escrow', true)
